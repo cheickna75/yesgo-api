@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YesGo — Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+  <style>
+    :root { --orange: #FF6B35; }
+    body  { background: #f5f5f5; font-family: 'Segoe UI', sans-serif; }
+
+    /* Navbar */
+    .navbar { background: #1a1a1a !important; }
+
+    /* Sidebar */
+    #sidebar { width: 220px; min-height: 100vh; background: #fff;
+      border-right: 1px solid #e5e5e5; padding-top: 1rem; flex-shrink: 0; }
+    #sidebar .nav-link { color: #444; border-radius: 10px; margin: 2px 8px;
+      padding: 10px 14px; font-weight: 500; }
+    #sidebar .nav-link:hover, #sidebar .nav-link.active {
+      background: #FFF0E9; color: var(--orange); }
+    #sidebar .nav-link i { width: 22px; }
+
+    /* Stat cards */
+    .stat-card { border: none; border-radius: 16px; padding: 1.4rem 1.6rem;
+      box-shadow: 0 2px 10px rgba(0,0,0,.07); }
+    .stat-card .icon { width: 48px; height: 48px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center; font-size: 22px; }
+    .stat-card .value { font-size: 2rem; font-weight: 800; line-height: 1; }
+    .stat-card .label { font-size: .8rem; color: #888; margin-top: 4px; }
+
+    /* Tables */
+    .table th { font-size: .78rem; text-transform: uppercase;
+      letter-spacing: .04em; color: #888; background: #fafafa; }
+    .badge-statut { font-size: .72rem; }
+
+    /* Login card */
+    #loginCard { max-width: 420px; border-radius: 20px;
+      box-shadow: 0 4px 30px rgba(0,0,0,.12); }
+    .btn-orange { background: var(--orange); color: #fff; border: none; }
+    .btn-orange:hover { background: #e0582a; color: #fff; }
+
+    /* Admin badge */
+    .admin-row td { background: #fffbeb; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ ÉCRAN DE CONNEXION ═══════════════════════════ -->
+<div id="loginScreen" class="d-flex align-items-center justify-content-center min-vh-100">
+  <div id="loginCard" class="card p-4 w-100 mx-3">
+
+    <div class="text-center mb-4">
+      <div style="font-size:2.5rem">🚀</div>
+      <h4 class="fw-800 mb-0" style="font-size:1.8rem">Yes<span style="color:var(--orange)">Go</span></h4>
+      <small class="text-muted">Interface Administrateur</small>
+    </div>
+
+    <!-- ── Vue : Connexion ── -->
+    <div id="viewLogin">
+      <div id="loginError" class="alert alert-danger d-none py-2 small"></div>
+
+      <div class="mb-3">
+        <label class="form-label fw-600">Téléphone</label>
+        <input id="loginTel" type="tel" class="form-control" placeholder="+22300000000" />
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-600">Mot de passe</label>
+        <div class="input-group">
+          <input id="loginPwd" type="password" class="form-control border-end-0" />
+          <button type="button" class="btn btn-outline-secondary border-start-0" id="togglePwd" tabindex="-1">
+            <i class="bi bi-eye" id="togglePwdIcon"></i>
+          </button>
+        </div>
+      </div>
+      <button id="loginBtn" class="btn btn-orange w-100 py-2 fw-700 mb-3">
+        <span id="loginSpinner" class="spinner-border spinner-border-sm me-2 d-none"></span>
+        Se connecter
+      </button>
+      <div class="text-center">
+        <a href="#" id="showForgotLink" class="small text-muted text-decoration-none">
+          <i class="bi bi-question-circle me-1"></i>Mot de passe oublié ?
+        </a>
+      </div>
+    </div>
+
+    <!-- ── Vue : Mot de passe oublié ── -->
+    <div id="viewForgot" class="d-none">
+      <div class="d-flex align-items-center mb-3">
+        <button id="backToLoginBtn" class="btn btn-sm btn-light me-2">
+          <i class="bi bi-arrow-left"></i>
+        </button>
+        <h6 class="mb-0 fw-700">Réinitialiser le mot de passe</h6>
+      </div>
+      <p class="small text-muted mb-3">Entrez votre numéro et choisissez un nouveau mot de passe.</p>
+
+      <div id="forgotError"   class="alert alert-danger  d-none py-2 small"></div>
+      <div id="forgotSuccess" class="alert alert-success d-none py-2 small"></div>
+
+      <div class="mb-3">
+        <label class="form-label fw-600">Téléphone</label>
+        <input id="forgotTel" type="tel" class="form-control" placeholder="+22300000000" />
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-600">Nouveau mot de passe</label>
+        <div class="input-group">
+          <input id="forgotPwd" type="password" class="form-control border-end-0" placeholder="8 caractères minimum" />
+          <button type="button" class="btn btn-outline-secondary border-start-0" onclick="toggleVis('forgotPwd','forgotPwdIcon')" tabindex="-1">
+            <i class="bi bi-eye" id="forgotPwdIcon"></i>
+          </button>
+        </div>
+      </div>
+      <div class="mb-4">
+        <label class="form-label fw-600">Confirmer le mot de passe</label>
+        <div class="input-group">
+          <input id="forgotPwd2" type="password" class="form-control border-end-0" />
+          <button type="button" class="btn btn-outline-secondary border-start-0" onclick="toggleVis('forgotPwd2','forgotPwd2Icon')" tabindex="-1">
+            <i class="bi bi-eye" id="forgotPwd2Icon"></i>
+          </button>
+        </div>
+      </div>
+      <button id="forgotBtn" class="btn btn-orange w-100 py-2 fw-700">
+        <span id="forgotSpinner" class="spinner-border spinner-border-sm me-2 d-none"></span>
+        Réinitialiser
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════ APPLICATION PRINCIPALE ═══════════════════════════ -->
+<div id="appScreen" class="d-none">
+
+  <!-- Navbar -->
+  <nav class="navbar px-4 py-2">
+    <span class="navbar-brand text-white mb-0 h5">
+      🚀 Yes<span style="color:var(--orange)">Go</span>
+      <span class="text-muted fs-6 fw-normal">Admin</span>
+    </span>
+    <button id="logoutBtn" class="btn btn-sm btn-outline-secondary text-white border-secondary">
+      <i class="bi bi-box-arrow-right"></i> Déconnexion
+    </button>
+  </nav>
+
+  <div class="d-flex">
+
+    <!-- Sidebar -->
+    <nav id="sidebar">
+      <ul class="nav flex-column">
+        <li class="nav-item">
+          <a href="#" class="nav-link active" data-section="dashboard">
+            <i class="bi bi-speedometer2"></i> Tableau de bord
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="#" class="nav-link" data-section="utilisateurs">
+            <i class="bi bi-people"></i> Utilisateurs
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="#" class="nav-link" data-section="reservations">
+            <i class="bi bi-ticket-perforated"></i> Réservations
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="#" class="nav-link" data-section="conducteurs">
+            <i class="bi bi-card-checklist"></i> Identités
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="#" class="nav-link" data-section="documents">
+            <i class="bi bi-folder2-open"></i> Documents
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="#" class="nav-link" data-section="admins">
+            <i class="bi bi-shield-lock"></i> Administrateurs
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- Contenu principal -->
+    <main class="flex-grow-1 p-4" style="overflow-x:hidden">
+
+      <!-- ── Section : Tableau de bord ── -->
+      <section id="sectionDashboard">
+        <h5 class="fw-700 mb-4">Tableau de bord</h5>
+        <div class="row g-3 mb-4">
+          <div class="col-6 col-lg-3">
+            <div class="stat-card card">
+              <div class="icon bg-warning bg-opacity-15 text-warning mb-2">👥</div>
+              <div class="value" id="statUsers">—</div>
+              <div class="label">Utilisateurs</div>
+            </div>
+          </div>
+          <div class="col-6 col-lg-3">
+            <div class="stat-card card">
+              <div class="icon mb-2" style="background:#FFF0E9;color:var(--orange)">🏍️</div>
+              <div class="value" id="statRides">—</div>
+              <div class="label">Trajets publiés</div>
+            </div>
+          </div>
+          <div class="col-6 col-lg-3">
+            <div class="stat-card card">
+              <div class="icon bg-success bg-opacity-15 text-success mb-2">🎫</div>
+              <div class="value" id="statBookings">—</div>
+              <div class="label">Réservations</div>
+            </div>
+          </div>
+          <div class="col-6 col-lg-3">
+            <div class="stat-card card">
+              <div class="icon bg-primary bg-opacity-15 text-primary mb-2">💰</div>
+              <div class="value text-success" id="statCommissions">—</div>
+              <div class="label">Commissions perçues</div>
+            </div>
+          </div>
+        </div>
+        <div class="row g-3">
+          <div class="col-6 col-lg-4">
+            <div class="stat-card card">
+              <div class="icon bg-info bg-opacity-15 text-info mb-2">✅</div>
+              <div class="value" id="statAccepted">—</div>
+              <div class="label">Réservations acceptées</div>
+            </div>
+          </div>
+          <div class="col-6 col-lg-4">
+            <div class="stat-card card">
+              <div class="icon bg-success bg-opacity-15 text-success mb-2">📲</div>
+              <div class="value text-success" id="statRecharges">—</div>
+              <div class="label">Total rechargé</div>
+            </div>
+          </div>
+          <div class="col-12 col-lg-4">
+            <div class="stat-card card bg-dark text-white">
+              <div class="label text-white-50 mb-2">Taux de commission plateforme</div>
+              <div class="value text-warning">10 %</div>
+              <div class="label text-white-50">sur chaque trajet accepté</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Section : Utilisateurs ── -->
+      <section id="sectionUtilisateurs" class="d-none">
+        <div class="d-flex align-items-center justify-content-between mb-4">
+          <h5 class="fw-700 mb-0">Utilisateurs</h5>
+          <input id="searchUser" type="search" class="form-control form-control-sm w-auto" placeholder="Rechercher…" />
+        </div>
+        <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Nom</th><th>Téléphone</th><th>Rôle</th>
+                <th class="text-end">Solde</th><th>Statut</th><th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <tr><td colspan="6" class="text-center py-4 text-muted">Chargement…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── Section : Réservations ── -->
+      <section id="sectionReservations" class="d-none">
+        <div class="d-flex align-items-center justify-content-between mb-4">
+          <h5 class="fw-700 mb-0">Réservations</h5>
+          <select id="filterStatut" class="form-select form-select-sm w-auto">
+            <option value="">Tous les statuts</option>
+            <option value="en_attente">En attente</option>
+            <option value="accepte">Accepté</option>
+            <option value="refuse">Refusé</option>
+            <option value="annule">Annulé</option>
+          </select>
+        </div>
+        <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Date</th><th>Passager</th><th>Trajet</th>
+                <th class="text-end">Prix</th>
+                <th class="text-end">Commission 10%</th>
+                <th>Statut</th>
+              </tr>
+            </thead>
+            <tbody id="bookingsTableBody">
+              <tr><td colspan="6" class="text-center py-4 text-muted">Chargement…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="bookingsTotal" class="text-end mt-2 fw-700 text-success"></div>
+      </section>
+
+      <!-- ── Section : Vérifications d'identité ── -->
+      <section id="sectionConducteurs" class="d-none">
+        <div class="d-flex align-items-center justify-content-between mb-4">
+          <h5 class="fw-700 mb-0">
+            <i class="bi bi-card-checklist me-2" style="color:var(--orange)"></i>Vérifications d'identité
+          </h5>
+          <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadConducteurs()" title="Actualiser">
+              <i class="bi bi-arrow-clockwise"></i>
+            </button>
+            <input id="searchConducteur" type="search" class="form-control form-control-sm" placeholder="Rechercher…" style="width:180px" />
+          </div>
+        </div>
+
+        <!-- Documents soumis (à vérifier) -->
+        <h6 class="fw-700 mb-2 mt-2" style="color:var(--orange)">
+          <i class="bi bi-clock-history me-1"></i>Documents soumis — à vérifier
+        </h6>
+        <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>Téléphone</th>
+                <th>Rôle</th>
+                <th>Documents</th>
+                <th>Vérification</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="conducteursTableBody">
+              <tr><td colspan="6" class="text-center py-4 text-muted">Chargement…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Sans documents -->
+        <h6 class="fw-700 mb-2" style="color:#9CA3AF">
+          <i class="bi bi-person-x me-1"></i>Sans documents soumis
+        </h6>
+        <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>Téléphone</th>
+                <th>Rôle</th>
+                <th>Documents</th>
+                <th>Vérification</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="passagersTableBody">
+              <tr><td colspan="6" class="text-center py-4 text-muted">Chargement…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── Section : Documents reçus ── -->
+      <section id="sectionDocuments" class="d-none">
+        <div class="d-flex align-items-center justify-content-between mb-4">
+          <h5 class="fw-700 mb-0">
+            <i class="bi bi-folder2-open me-2" style="color:var(--orange)"></i>Dossier documents reçus
+          </h5>
+          <div class="d-flex gap-2">
+            <button id="dlAllDocsBtn" class="btn btn-sm btn-orange px-3" style="display:none"
+              onclick="telechargerTousDocs()">
+              <i class="bi bi-download me-1"></i>Tout télécharger
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadDocumentFiles()">
+              <i class="bi bi-arrow-clockwise me-1"></i>Actualiser
+            </button>
+          </div>
+        </div>
+        <div id="docsFilesGrid" class="row g-3">
+          <div class="col-12 text-center text-muted py-4">Chargement…</div>
+        </div>
+      </section>
+
+      <!-- ── Section : Administrateurs ── -->
+      <section id="sectionAdmins" class="d-none">
+        <div class="d-flex align-items-center justify-content-between mb-4">
+          <h5 class="fw-700 mb-0">
+            <i class="bi bi-shield-lock me-2" style="color:var(--orange)"></i>Administrateurs
+          </h5>
+          <button class="btn btn-orange btn-sm px-3" data-bs-toggle="modal" data-bs-target="#modalAdmin">
+            <i class="bi bi-plus-lg me-1"></i> Nouveau compte admin
+          </button>
+        </div>
+
+        <div id="adminsAlert" class="d-none mb-3"></div>
+
+        <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>Téléphone</th>
+                <th>Statut</th>
+                <th>Créé le</th>
+              </tr>
+            </thead>
+            <tbody id="adminsTableBody">
+              <tr><td colspan="4" class="text-center py-4 text-muted">Chargement…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ══════════ MODAL : Créer un compte admin ══════════ -->
+<div class="modal fade" id="modalAdmin" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-700">
+          <i class="bi bi-shield-plus me-2" style="color:var(--orange)"></i>Nouveau compte administrateur
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-2">
+        <p class="small text-muted mb-3">
+          Entrez un numéro existant pour <strong>promouvoir</strong> un utilisateur,
+          ou remplissez tous les champs pour <strong>créer</strong> un nouveau compte.
+        </p>
+
+        <div id="adminModalError"   class="alert alert-danger  d-none py-2 small"></div>
+        <div id="adminModalSuccess" class="alert alert-success d-none py-2 small"></div>
+
+        <div class="mb-3">
+          <label class="form-label fw-600">Téléphone <span class="text-danger">*</span></label>
+          <input id="adminTel" type="tel" class="form-control" placeholder="+22300000000" />
+          <div class="form-text">Si ce numéro existe déjà, le compte sera promu admin sans mot de passe.</div>
+        </div>
+
+        <hr class="my-3" />
+        <p class="small fw-600 text-muted mb-2">Nouveau compte uniquement</p>
+
+        <div class="mb-3">
+          <label class="form-label fw-600">Nom complet</label>
+          <input id="adminNom" type="text" class="form-control" placeholder="ex : Marie Dupont" />
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-600">Mot de passe</label>
+          <div class="input-group">
+            <input id="adminPwd" type="password" class="form-control border-end-0" placeholder="8 caractères minimum" />
+            <button type="button" class="btn btn-outline-secondary border-start-0" onclick="toggleVis('adminPwd','adminPwdIcon')" tabindex="-1">
+              <i class="bi bi-eye" id="adminPwdIcon"></i>
+            </button>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-600">Confirmer le mot de passe</label>
+          <div class="input-group">
+            <input id="adminPwd2" type="password" class="form-control border-end-0" />
+            <button type="button" class="btn btn-outline-secondary border-start-0" onclick="toggleVis('adminPwd2','adminPwd2Icon')" tabindex="-1">
+              <i class="bi bi-eye" id="adminPwd2Icon"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-light" data-bs-dismiss="modal">Annuler</button>
+        <button id="adminSubmitBtn" class="btn btn-orange px-4">
+          <span id="adminSubmitSpinner" class="spinner-border spinner-border-sm me-2 d-none"></span>
+          Créer / Promouvoir
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  // ── Configuration ────────────────────────────────────────────────────────────
+  const API = window.location.hostname === 'localhost'
+    ? 'http://localhost:3000/api'
+    : `${window.location.origin}/api`;
+
+  let TOKEN       = localStorage.getItem('adminToken');
+  let allUsers    = [];
+  let allBookings = [];
+
+  // ── Utilitaires ──────────────────────────────────────────────────────────────
+  const fmt = (n) => Number(n || 0).toLocaleString('fr-FR');
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  }) : '—';
+
+  function toggleVis(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon  = document.getElementById(iconId);
+    if (input.type === 'password') { input.type = 'text';     icon.className = 'bi bi-eye-slash'; }
+    else                           { input.type = 'password'; icon.className = 'bi bi-eye'; }
+  }
+
+  const STATUT_BADGE = { en_attente: 'warning', accepte: 'success', refuse: 'danger', annule: 'secondary' };
+  const STATUT_LABEL = { en_attente: 'En attente', accepte: 'Accepté', refuse: 'Refusé', annule: 'Annulé' };
+
+  async function apiFetch(path, opts = {}) {
+    const res = await fetch(API + path, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
+      },
+      ...opts,
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || `Erreur ${res.status}`);
+    return json;
+  }
+
+  // ── Affichage initial ────────────────────────────────────────────────────────
+  if (TOKEN) showApp();
+
+  // ── Toggle mot de passe (connexion) ─────────────────────────────────────────
+  document.getElementById('togglePwd').addEventListener('click', () =>
+    toggleVis('loginPwd', 'togglePwdIcon'));
+
+  // ── Connexion ────────────────────────────────────────────────────────────────
+  document.getElementById('loginBtn').addEventListener('click', async () => {
+    const tel     = document.getElementById('loginTel').value.trim();
+    const pwd     = document.getElementById('loginPwd').value;
+    const err     = document.getElementById('loginError');
+    const spinner = document.getElementById('loginSpinner');
+    err.classList.add('d-none');
+    spinner.classList.remove('d-none');
+    try {
+      const json = await apiFetch('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ telephone: tel, mot_de_passe: pwd }),
+      });
+      if (!json.data?.est_admin) {
+        err.textContent = 'Accès refusé : ce compte n\'est pas administrateur.';
+        err.classList.remove('d-none');
+        return;
+      }
+      TOKEN = json.token;
+      localStorage.setItem('adminToken', TOKEN);
+      showApp();
+    } catch (e) {
+      err.textContent = e.message;
+      err.classList.remove('d-none');
+    } finally {
+      spinner.classList.add('d-none');
+    }
+  });
+
+  document.getElementById('loginPwd').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('loginBtn').click();
+  });
+
+  // ── Mot de passe oublié ──────────────────────────────────────────────────────
+  document.getElementById('showForgotLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    document.getElementById('viewLogin').classList.add('d-none');
+    document.getElementById('viewForgot').classList.remove('d-none');
+    document.getElementById('forgotTel').value  = document.getElementById('loginTel').value;
+    document.getElementById('forgotPwd').value  = '';
+    document.getElementById('forgotPwd2').value = '';
+    document.getElementById('forgotError').classList.add('d-none');
+    document.getElementById('forgotSuccess').classList.add('d-none');
+  });
+
+  document.getElementById('backToLoginBtn').addEventListener('click', () => {
+    document.getElementById('viewForgot').classList.add('d-none');
+    document.getElementById('viewLogin').classList.remove('d-none');
+  });
+
+  document.getElementById('forgotBtn').addEventListener('click', async () => {
+    const tel     = document.getElementById('forgotTel').value.trim();
+    const pwd     = document.getElementById('forgotPwd').value;
+    const pwd2    = document.getElementById('forgotPwd2').value;
+    const errEl   = document.getElementById('forgotError');
+    const okEl    = document.getElementById('forgotSuccess');
+    const spinner = document.getElementById('forgotSpinner');
+
+    errEl.classList.add('d-none');
+    okEl.classList.add('d-none');
+
+    if (!tel)           { errEl.textContent = 'Numéro de téléphone requis.'; errEl.classList.remove('d-none'); return; }
+    if (pwd.length < 8) { errEl.textContent = 'Le mot de passe doit contenir au moins 8 caractères.'; errEl.classList.remove('d-none'); return; }
+    if (pwd !== pwd2)   { errEl.textContent = 'Les mots de passe ne correspondent pas.'; errEl.classList.remove('d-none'); return; }
+
+    spinner.classList.remove('d-none');
+    try {
+      await apiFetch('/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({ telephone: tel, nouveau_mot_de_passe: pwd }),
+      });
+      okEl.textContent = 'Mot de passe réinitialisé. Vous pouvez vous connecter.';
+      okEl.classList.remove('d-none');
+      setTimeout(() => {
+        document.getElementById('viewForgot').classList.add('d-none');
+        document.getElementById('viewLogin').classList.remove('d-none');
+        document.getElementById('loginTel').value = tel;
+        document.getElementById('loginPwd').value = '';
+        document.getElementById('loginPwd').focus();
+      }, 2000);
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.classList.remove('d-none');
+    } finally {
+      spinner.classList.add('d-none');
+    }
+  });
+
+  // ── Déconnexion ──────────────────────────────────────────────────────────────
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('adminToken');
+    TOKEN = null;
+    document.getElementById('appScreen').classList.add('d-none');
+    document.getElementById('loginScreen').classList.remove('d-none');
+    document.getElementById('viewForgot').classList.add('d-none');
+    document.getElementById('viewLogin').classList.remove('d-none');
+  });
+
+  // ── Navigation ───────────────────────────────────────────────────────────────
+  const SECTIONS = ['dashboard', 'utilisateurs', 'reservations', 'conducteurs', 'documents', 'admins'];
+  let allConducteurs = [];
+
+  document.querySelectorAll('#sidebar .nav-link').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const section = link.dataset.section;
+      document.querySelectorAll('#sidebar .nav-link').forEach(l => l.classList.remove('active'));
+      link.classList.add('active');
+      SECTIONS.forEach(s => {
+        document.getElementById('section' + s.charAt(0).toUpperCase() + s.slice(1)).classList.add('d-none');
+      });
+      const el = document.getElementById('section' + section.charAt(0).toUpperCase() + section.slice(1));
+      if (el) el.classList.remove('d-none');
+
+      if (section === 'dashboard')    loadStats();
+      if (section === 'utilisateurs') loadUsers();
+      if (section === 'reservations') loadBookings();
+      if (section === 'conducteurs')  loadConducteurs();
+      if (section === 'documents')    loadDocumentFiles();
+      if (section === 'admins')       loadAdmins();
+    });
+  });
+
+  // ── Afficher l'application ───────────────────────────────────────────────────
+  function showApp() {
+    document.getElementById('loginScreen').classList.add('d-none');
+    document.getElementById('appScreen').classList.remove('d-none');
+    loadStats();
+  }
+
+  // ── Tableau de bord ──────────────────────────────────────────────────────────
+  async function loadStats() {
+    try {
+      const { data } = await apiFetch('/admin/stats');
+      document.getElementById('statUsers').textContent       = fmt(data.totalUtilisateurs);
+      document.getElementById('statRides').textContent       = fmt(data.totalTrajets);
+      document.getElementById('statBookings').textContent    = fmt(data.totalReservations);
+      document.getElementById('statAccepted').textContent    = fmt(data.reservationsAcceptees);
+      document.getElementById('statCommissions').textContent = fmt(data.totalCommissions);
+      document.getElementById('statRecharges').textContent   = fmt(data.totalRecharges);
+    } catch (e) {
+      console.error('Erreur stats :', e.message);
+    }
+  }
+
+  // ── Utilisateurs ─────────────────────────────────────────────────────────────
+  async function loadUsers() {
+    const tbody = document.getElementById('usersTableBody');
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">Chargement…</td></tr>';
+    try {
+      const { data } = await apiFetch('/admin/utilisateurs');
+      allUsers = data;
+      renderUsers(allUsers);
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-3">${e.message}</td></tr>`;
+    }
+  }
+
+  function renderUsers(users) {
+    const tbody = document.getElementById('usersTableBody');
+    if (!users.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">Aucun utilisateur.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = users.map(u => `
+      <tr>
+        <td>
+          <div class="fw-600">${u.nom}</div>
+          ${u.est_admin ? '<span class="badge bg-danger" style="font-size:.65rem">Admin</span>' : ''}
+        </td>
+        <td class="text-muted">${u.telephone}</td>
+        <td>${u.est_conducteur ? '🏍️ Conducteur' : '🧑 Passager'}</td>
+        <td class="text-end fw-600">${fmt(u.solde)}</td>
+        <td>
+          ${u.actif
+            ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Actif</span>'
+            : '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Désactivé</span>'}
+        </td>
+        <td>
+          ${u.est_admin ? '<span class="text-muted small">—</span>' : `
+            <button class="btn btn-sm ${u.actif ? 'btn-outline-danger' : 'btn-outline-success'} py-0 px-2"
+              onclick="toggleUser('${u.id}', ${u.actif})">
+              ${u.actif ? '<i class="bi bi-slash-circle"></i> Désactiver' : '<i class="bi bi-check-circle"></i> Réactiver'}
+            </button>`}
+        </td>
+      </tr>`).join('');
+  }
+
+  document.getElementById('searchUser').addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase();
+    renderUsers(allUsers.filter(u =>
+      u.nom.toLowerCase().includes(q) || u.telephone.includes(q)
+    ));
+  });
+
+  async function toggleUser(id, estActif) {
+    if (!confirm(`${estActif ? 'Désactiver' : 'Réactiver'} ce compte ?`)) return;
+    try {
+      await apiFetch(`/admin/utilisateurs/${id}/toggle`, { method: 'PATCH' });
+      await loadUsers();
+    } catch (e) {
+      alert('Erreur : ' + e.message);
+    }
+  }
+
+  // ── Réservations ─────────────────────────────────────────────────────────────
+  async function loadBookings() {
+    const tbody = document.getElementById('bookingsTableBody');
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">Chargement…</td></tr>';
+    try {
+      const { data } = await apiFetch('/admin/reservations');
+      allBookings = data;
+      renderBookings(allBookings);
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-3">${e.message}</td></tr>`;
+    }
+  }
+
+  function renderBookings(bookings) {
+    const tbody   = document.getElementById('bookingsTableBody');
+    const totalEl = document.getElementById('bookingsTotal');
+    if (!bookings.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">Aucune réservation.</td></tr>';
+      totalEl.textContent = '';
+      return;
+    }
+    const totalComm = bookings.filter(b => b.statut === 'accepte').reduce((s, b) => s + b.commission, 0);
+    tbody.innerHTML = bookings.map(b => `
+      <tr>
+        <td class="text-muted small">${fmtDate(b.createdAt)}</td>
+        <td>
+          <div class="fw-600">${b.passager?.nom || '—'}</div>
+          <div class="text-muted small">${b.passager?.telephone || ''}</div>
+        </td>
+        <td>
+          <div class="fw-600 small">${b.trajet?.depart_label || '—'}</div>
+          <div class="text-muted small">→ ${b.trajet?.arrivee_label || '—'}</div>
+        </td>
+        <td class="text-end fw-600">${fmt(b.prix)}</td>
+        <td class="text-end fw-600 ${b.statut === 'accepte' ? 'text-success' : 'text-muted'}">
+          ${b.statut === 'accepte' ? fmt(b.commission) : '—'}
+        </td>
+        <td>
+          <span class="badge badge-statut bg-${STATUT_BADGE[b.statut] || 'secondary'}">
+            ${STATUT_LABEL[b.statut] || b.statut}
+          </span>
+        </td>
+      </tr>`).join('');
+    totalEl.textContent = `Total commissions (trajets acceptés) : ${fmt(totalComm)}`;
+  }
+
+  document.getElementById('filterStatut').addEventListener('change', (e) => {
+    const val = e.target.value;
+    renderBookings(val ? allBookings.filter(b => b.statut === val) : allBookings);
+  });
+
+  // ── Conducteurs ──────────────────────────────────────────────────────────────
+  async function loadConducteurs() {
+    document.getElementById('conducteursTableBody').innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">Chargement…</td></tr>';
+    document.getElementById('passagersTableBody').innerHTML  = '<tr><td colspan="6" class="text-center py-3 text-muted">Chargement…</td></tr>';
+    try {
+      const { data } = await apiFetch('/admin/conducteurs');
+      allConducteurs = data;
+      renderConducteurs(allConducteurs);
+    } catch (e) {
+      document.getElementById('conducteursTableBody').innerHTML = `<tr><td colspan="6" class="text-danger text-center py-3">${e.message}</td></tr>`;
+      document.getElementById('passagersTableBody').innerHTML  = '';
+    }
+  }
+
+  // Toujours utiliser l'origine réelle du navigateur pour les images
+  const SERVER_BASE    = window.location.origin;
+  const DOC_TYPE_LABEL = { cni: '🪪 CNI', permis: '🚗 Permis' };
+
+  function buildRow(c) {
+    const docs = Array.isArray(c.document_urls) ? c.document_urls.filter(Boolean) : [];
+    const roleBadge = c.est_conducteur
+      ? '<span class="badge bg-warning text-dark"><i class="bi bi-bicycle me-1"></i>Conducteur</span>'
+      : '<span class="badge bg-info-subtle text-info border border-info-subtle"><i class="bi bi-person me-1"></i>Passager</span>';
+
+    let docsHtml;
+    if (docs.length > 0) {
+      const thumbs = docs.map(f => {
+        const url      = `${SERVER_BASE}${f}`;
+        const type     = f.split('_')[1] || '';
+        const label    = DOC_TYPE_LABEL[type] || 'Doc';
+        const filename = f.split('/').pop();
+        return `<div style="display:inline-block;text-align:center;margin-right:6px;vertical-align:top">
+          <a href="${url}" target="_blank" rel="noopener">
+            <img src="${url}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #ddd;display:block"
+                 onerror="this.style.display='none'" />
+          </a>
+          <div class="d-flex gap-1 justify-content-center mt-1">
+            <span style="font-size:.6rem;color:#666">${label}</span>
+            <a href="${url}" download="${filename}" title="Télécharger ${label}"
+               style="font-size:.65rem;color:var(--orange);text-decoration:none">
+              <i class="bi bi-download"></i>
+            </a>
+          </div>
+        </div>`;
+      }).join('');
+      const docsEnc = encodeURIComponent(JSON.stringify(docs));
+      const nomEnc  = encodeURIComponent(c.nom);
+      docsHtml = `<div class="d-flex align-items-center flex-wrap gap-1">
+        ${thumbs}
+        <div class="d-flex flex-column gap-1 ms-1">
+          <button class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size:.7rem"
+            onclick="voirDocumentsEnc('${nomEnc}','${docsEnc}')" title="Voir en grand">
+            <i class="bi bi-fullscreen"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.7rem"
+            onclick="telechargerDocsUser('${docsEnc}')" title="Tout télécharger">
+            <i class="bi bi-download"></i>
+          </button>
+        </div>
+      </div>`;
+    } else {
+      docsHtml = '<span class="text-muted small fst-italic">Aucun fichier reçu</span>';
+    }
+
+    const hasFiles = docs.length > 0;
+    const nomSafe  = c.nom.replace(/'/g, "\\'");
+    return `
+    <tr>
+      <td class="fw-600">${c.nom}</td>
+      <td class="text-muted small">${c.telephone}</td>
+      <td>${roleBadge}</td>
+      <td>
+        ${!c.documents_soumis
+          ? '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Non soumis</span>'
+          : hasFiles
+            ? docsHtml
+            : '<span class="badge bg-danger-subtle text-danger border border-danger-subtle"><i class="bi bi-exclamation-triangle me-1"></i>Soumis — fichiers manquants</span>'}
+      </td>
+      <td>
+        ${c.is_verifie
+          ? '<span class="badge bg-success"><i class="bi bi-patch-check-fill me-1"></i>Vérifié</span>'
+          : c.documents_soumis && hasFiles
+            ? '<span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>En attente</span>'
+            : c.documents_soumis && !hasFiles
+              ? '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Fichiers absents</span>'
+              : '<span class="badge bg-secondary-subtle text-muted">—</span>'}
+      </td>
+      <td>
+        <div class="d-flex gap-1 flex-wrap">
+          ${hasFiles ? `
+          <button class="btn btn-sm ${c.is_verifie ? 'btn-outline-danger' : 'btn-outline-success'} py-0 px-2"
+            onclick="toggleVerif('${c.id}', ${c.is_verifie}, '${nomSafe}')">
+            ${c.is_verifie
+              ? '<i class="bi bi-x-circle me-1"></i>Retirer vérif.'
+              : '<i class="bi bi-patch-check me-1"></i>Vérifier'}
+          </button>` : ''}
+          ${c.documents_soumis && !hasFiles ? `
+          <button class="btn btn-sm btn-outline-warning py-0 px-2" title="Réinitialiser — permet à l'utilisateur de resoumettre"
+            onclick="resetDocs('${c.id}', '${nomSafe}')">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>Réinitialiser
+          </button>` : ''}
+          ${!c.documents_soumis ? `
+          <span class="text-muted small">—</span>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  function voirDocumentsEnc(nomEnc, docsEnc) {
+    voirDocuments(decodeURIComponent(nomEnc), JSON.parse(decodeURIComponent(docsEnc)));
+  }
+
+  function telechargerDocsUser(docsEnc) {
+    const docs = JSON.parse(decodeURIComponent(docsEnc));
+    docs.forEach((f, i) => {
+      setTimeout(() => {
+        const a = document.createElement('a');
+        a.href = `${SERVER_BASE}${f}`;
+        a.download = f.split('/').pop();
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }, i * 400);
+    });
+  }
+
+  function renderConducteurs(list) {
+    // Section 1 : tous ceux qui ont soumis des documents (à vérifier)
+    const avecDocs  = list.filter(u => u.documents_soumis);
+    // Section 2 : tous ceux sans documents
+    const sansDocs  = list.filter(u => !u.documents_soumis);
+
+    const tbody1 = document.getElementById('conducteursTableBody');
+    tbody1.innerHTML = avecDocs.length
+      ? avecDocs.map(buildRow).join('')
+      : '<tr><td colspan="6" class="text-center py-3 text-muted">Aucun document soumis pour le moment.</td></tr>';
+
+    const tbody2 = document.getElementById('passagersTableBody');
+    tbody2.innerHTML = sansDocs.length
+      ? sansDocs.map(buildRow).join('')
+      : '<tr><td colspan="6" class="text-center py-3 text-muted">Tous les utilisateurs ont soumis leurs documents.</td></tr>';
+  }
+
+  function voirDocuments(nom, filenames) {
+    document.getElementById('modalDocsTitle').textContent = '🪪 Documents de ' + nom;
+    const container = document.getElementById('modalDocsContent');
+    const fullLabel = { cni: '🪪 Pièce d\'identité', permis: '🚗 Permis de conduire' };
+    container.innerHTML = filenames.map(f => {
+      const url   = `${SERVER_BASE}${f}`;
+      const type  = f.split('_')[1] || '';
+      const label = fullLabel[type] || 'Document';
+      return `<div class="text-center mb-4">
+        <p class="fw-700 mb-2">${label}</p>
+        <img src="${url}" class="img-fluid rounded-3 shadow-sm" style="max-height:420px"
+             onerror="this.outerHTML='<div class=\\'alert alert-warning\\'>Image non disponible : ${url}</div>'" />
+        <div class="mt-2 d-flex gap-2 justify-content-center">
+          <a href="${url}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-box-arrow-up-right me-1"></i>Ouvrir
+          </a>
+          <a href="${url}" download class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-download me-1"></i>Télécharger
+          </a>
+        </div>
+      </div>`;
+    }).join('');
+    new bootstrap.Modal(document.getElementById('modalDocs')).show();
+  }
+
+  document.getElementById('searchConducteur').addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase();
+    renderConducteurs(q
+      ? allConducteurs.filter(c => c.nom.toLowerCase().includes(q) || c.telephone.includes(q))
+      : allConducteurs
+    );
+  });
+
+  // ── Dossier documents ────────────────────────────────────────────────────────
+  let _allDocFiles = [];
+
+  async function loadDocumentFiles() {
+    const grid = document.getElementById('docsFilesGrid');
+    grid.innerHTML = '<div class="col-12 text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Chargement…</div>';
+    try {
+      const { data } = await apiFetch('/admin/documents-files');
+      _allDocFiles = data;
+      const dlAllBtn = document.getElementById('dlAllDocsBtn');
+      if (dlAllBtn) dlAllBtn.style.display = data.length ? '' : 'none';
+      if (!data.length) {
+        grid.innerHTML = '<div class="col-12 text-center text-muted py-5"><i class="bi bi-folder-x fs-2 d-block mb-2"></i>Aucun fichier reçu pour le moment.</div>';
+        return;
+      }
+      grid.innerHTML = data.map(f => {
+        const fileUrl  = `${SERVER_BASE}${f.path}`;
+        const isImage  = /\.(jpg|jpeg|png|gif|webp)$/i.test(f.filename);
+        const sizeKb   = (f.size / 1024).toFixed(1);
+        const dateStr  = new Date(f.date).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+        const docLabel = { cni: '🪪 CNI', permis: '🚗 Permis' }[f.fieldname] || f.fieldname || 'Document';
+        const userInfo = f.user
+          ? `<div class="fw-600 small text-truncate">${f.user.nom}</div>
+             <div class="text-muted" style="font-size:.72rem">${f.user.telephone}</div>
+             <div class="mt-1 d-flex gap-1 flex-wrap">
+               ${f.user.est_conducteur ? '<span class="badge bg-warning text-dark" style="font-size:.65rem">Conducteur</span>' : '<span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size:.65rem">Passager</span>'}
+               <span class="badge bg-light text-dark border" style="font-size:.65rem">${docLabel}</span>
+             </div>`
+          : '<span class="text-muted small">Utilisateur inconnu</span>';
+        const preview = isImage
+          ? `<a href="${fileUrl}" target="_blank"><img src="${fileUrl}" class="rounded-3 mb-2" style="width:100%;height:140px;object-fit:cover" onerror="this.style.display='none'" /></a>`
+          : `<div class="d-flex align-items-center justify-content-center rounded-3 mb-2 bg-light" style="height:140px"><i class="bi bi-file-earmark-text text-secondary" style="font-size:3rem"></i></div>`;
+        return `
+        <div class="col-sm-6 col-md-4 col-lg-3">
+          <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-body p-3">
+              ${preview}
+              ${userInfo}
+              <div class="text-muted mt-1" style="font-size:.7rem">${dateStr} · ${sizeKb} Ko</div>
+              <div class="d-flex gap-2 mt-2">
+                <a href="${fileUrl}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary flex-fill py-1">
+                  <i class="bi bi-eye me-1"></i>Ouvrir
+                </a>
+                <a href="${fileUrl}" download="${f.filename}" class="btn btn-sm btn-outline-secondary py-1 px-2">
+                  <i class="bi bi-download"></i>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    } catch (e) {
+      grid.innerHTML = `<div class="col-12 text-danger text-center py-3">${e.message}</div>`;
+    }
+  }
+
+  function telechargerTousDocs() {
+    if (!_allDocFiles.length) return;
+    _allDocFiles.forEach((f, i) => {
+      setTimeout(() => {
+        const a = document.createElement('a');
+        a.href = `${SERVER_BASE}${f.path}`;
+        a.download = f.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }, i * 400);
+    });
+  }
+
+  async function resetDocs(id, nom) {
+    if (!confirm(`Réinitialiser les documents de ${nom} ?\n\nL'utilisateur devra soumettre ses documents à nouveau depuis l'application.`)) return;
+    try {
+      const { message } = await apiFetch(`/admin/conducteurs/${id}/reset-docs`, { method: 'PATCH' });
+      alert(message);
+      await loadConducteurs();
+    } catch (e) {
+      if (e.message.includes('expiré') || e.message.includes('autorisé') || e.message.includes('401')) {
+        alert('Session expirée. Veuillez vous reconnecter.');
+        localStorage.removeItem('adminToken');
+        location.reload();
+      } else {
+        alert('Erreur : ' + e.message);
+      }
+    }
+  }
+
+  async function toggleVerif(id, estVerifie, nom) {
+    const action = estVerifie ? 'retirer la vérification de' : 'vérifier';
+    if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} le conducteur ${nom} ?`)) return;
+    try {
+      const { message } = await apiFetch(`/admin/conducteurs/${id}/verifier`, { method: 'PATCH' });
+      alert(message);
+      await loadConducteurs();
+    } catch (e) {
+      alert('Erreur : ' + e.message);
+    }
+  }
+
+  // ── Administrateurs ──────────────────────────────────────────────────────────
+  async function loadAdmins() {
+    const tbody = document.getElementById('adminsTableBody');
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-muted">Chargement…</td></tr>';
+    try {
+      const { data } = await apiFetch('/admin/admins');
+      if (!data.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-muted">Aucun administrateur.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.map(a => `
+        <tr class="admin-row">
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <div style="width:34px;height:34px;border-radius:50%;background:var(--orange);color:#fff;
+                          display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0">
+                ${a.nom[0].toUpperCase()}
+              </div>
+              <div>
+                <div class="fw-600">${a.nom}</div>
+                <span class="badge bg-danger" style="font-size:.62rem">Admin</span>
+              </div>
+            </div>
+          </td>
+          <td class="text-muted align-middle">${a.telephone}</td>
+          <td class="align-middle">
+            ${a.actif
+              ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Actif</span>'
+              : '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Désactivé</span>'}
+          </td>
+          <td class="text-muted small align-middle">${fmtDate(a.createdAt)}</td>
+        </tr>`).join('');
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-3">${e.message}</td></tr>`;
+    }
+  }
+
+  // ── Modal : Créer / Promouvoir un admin ──────────────────────────────────────
+  document.getElementById('modalAdmin').addEventListener('show.bs.modal', () => {
+    ['adminTel','adminNom','adminPwd','adminPwd2'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('adminModalError').classList.add('d-none');
+    document.getElementById('adminModalSuccess').classList.add('d-none');
+  });
+
+  document.getElementById('adminSubmitBtn').addEventListener('click', async () => {
+    const tel     = document.getElementById('adminTel').value.trim();
+    const nom     = document.getElementById('adminNom').value.trim();
+    const pwd     = document.getElementById('adminPwd').value;
+    const pwd2    = document.getElementById('adminPwd2').value;
+    const errEl   = document.getElementById('adminModalError');
+    const okEl    = document.getElementById('adminModalSuccess');
+    const spinner = document.getElementById('adminSubmitSpinner');
+
+    errEl.classList.add('d-none');
+    okEl.classList.add('d-none');
+
+    if (!tel) {
+      errEl.textContent = 'Le numéro de téléphone est requis.';
+      errEl.classList.remove('d-none');
+      return;
+    }
+    // Si nom ou mot de passe renseigné → vérifier cohérence
+    if ((nom || pwd || pwd2) && (!nom || !pwd)) {
+      errEl.textContent = 'Pour créer un nouveau compte, nom et mot de passe sont requis.';
+      errEl.classList.remove('d-none');
+      return;
+    }
+    if (pwd && pwd.length < 8) {
+      errEl.textContent = 'Le mot de passe doit contenir au moins 8 caractères.';
+      errEl.classList.remove('d-none');
+      return;
+    }
+    if (pwd && pwd !== pwd2) {
+      errEl.textContent = 'Les mots de passe ne correspondent pas.';
+      errEl.classList.remove('d-none');
+      return;
+    }
+
+    spinner.classList.remove('d-none');
+    try {
+      const body = { telephone: tel };
+      if (nom) body.nom = nom;
+      if (pwd) body.mot_de_passe = pwd;
+
+      const json = await apiFetch('/admin/admins', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+
+      okEl.textContent = json.message;
+      okEl.classList.remove('d-none');
+      setTimeout(async () => {
+        bootstrap.Modal.getInstance(document.getElementById('modalAdmin')).hide();
+        await loadAdmins();
+      }, 1500);
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.classList.remove('d-none');
+    } finally {
+      spinner.classList.add('d-none');
+    }
+  });
+</script>
+
+<!-- ══════════ MODAL : Visualisation documents d'identité ══════════ -->
+<div class="modal fade" id="modalDocs" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 rounded-4 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-700" id="modalDocsTitle">
+          <i class="bi bi-card-checklist me-2" style="color:var(--orange)"></i>Documents
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="modalDocsContent" style="max-height:70vh;overflow-y:auto">
+        <!-- Images injectées dynamiquement -->
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
