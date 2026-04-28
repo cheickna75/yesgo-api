@@ -2,6 +2,7 @@ const axios  = require('axios');
 const crypto = require('crypto');
 const { Booking, Ride, User, Notification } = require('../models');
 const { sendPush } = require('../services/pushService');
+const { COMMISSION_RATE } = require('../config/betaConfig');
 
 const CINETPAY_URL          = 'https://api-checkout.cinetpay.com/v2/payment';
 const CINETPAY_CHECK_URL    = 'https://api-checkout.cinetpay.com/v2/payment/check';
@@ -12,10 +13,6 @@ function getCreds() {
   const siteId = process.env.CINETPAY_SITE_ID || process.env.CINETPAY_TEST_SITE_ID;
   if (!apiKey || !siteId) return null;
   return { apiKey, siteId };
-}
-
-function getCommission() {
-  return Math.min(100, Math.max(0, parseFloat(process.env.YESGO_COMMISSION_PERCENT) || 10)) / 100;
 }
 
 // POST /api/payments/initiate
@@ -176,7 +173,7 @@ const notifierPaiement = async (req, res) => {
 const payerConducteur = async ({ conducteur, montantBrut, bookingId }) => {
   const password = process.env.CINETPAY_TRANSFER_PASSWORD;
   const creds    = getCreds();
-  const taux     = getCommission();
+  const taux     = COMMISSION_RATE;
 
   if (!password || !creds) {
     console.warn('[Payout] Credentials manquants — payout ignoré');

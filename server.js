@@ -1,7 +1,9 @@
 require('dotenv').config();
-const path = require('path');
-const fs   = require('fs');
-const express = require('express');
+const path        = require('path');
+const fs          = require('fs');
+const express     = require('express');
+const cors        = require('cors');
+const rateLimit   = require('express-rate-limit');
 
 // Garantir l'existence des dossiers uploads au démarrage
 const uploadsDir = path.join(__dirname, 'uploads', 'documents');
@@ -16,6 +18,34 @@ const errorHandler = require('./src/middleware/errorHandler');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// CORS — autorise toutes les origines (API mobile + admin panel)
+app.use(cors({
+  origin: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+}));
+
+// Rate limiting global : 200 req/15min par IP
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Trop de requêtes. Réessayez dans quelques minutes.' },
+});
+app.use('/api', globalLimiter);
+
+// Rate limiting strict sur les routes d'authentification : 20 req/15min
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Trop de tentatives. Réessayez dans 15 minutes.' },
+});
+app.use('/api/auth', authLimiter);
 
 // Webhook Stripe — corps brut requis, DOIT être avant express.json()
 const { stripeWebhook } = require('./src/controllers/stripeController');

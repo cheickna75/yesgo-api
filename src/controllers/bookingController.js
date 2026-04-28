@@ -1,4 +1,4 @@
-const { Booking, Ride, User, Conversation, ConversationParticipant, Notification } = require('../models');
+const { Booking, Ride, User, Conversation, ConversationParticipant, Notification, Transaction } = require('../models');
 const { sequelize } = require('../config/database');
 const { sendPush } = require('../services/pushService');
 const { payerConducteur } = require('./paymentController');
@@ -127,7 +127,7 @@ const mettreAJourStatut = async (req, res, next) => {
       await reservation.update({ statut }, { transaction: t });
 
       if (statut === 'accepte' && ancienStatut === 'en_attente') {
-        await reservation.trajet.decrement('places', { by: nbPlaces }, { transaction: t });
+        await reservation.trajet.decrement('places', { by: nbPlaces, transaction: t });
         await reservation.trajet.reload({ transaction: t });
         if (reservation.trajet.places <= 0) {
           await reservation.trajet.update({ statut: 'complet' }, { transaction: t });
@@ -306,6 +306,15 @@ const terminerCourse = async (req, res, next) => {
         montantBrut: montant,
         bookingId:   reservation.id,
       }).catch((err) => console.error('[Payout] Erreur:', err.message));
+    } else {
+      // Enregistrer la transaction cash pour l'historique du conducteur
+      await Transaction.create({
+        user_id:      conducteur.id,
+        type:         'credit',
+        montant:      montant,
+        description:  `Espèces · ${route}`,
+        reference_id: reservation.id,
+      });
     }
 
     // Notification passager

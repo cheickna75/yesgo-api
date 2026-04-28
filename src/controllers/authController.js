@@ -131,7 +131,7 @@ const multer = require('multer');
 const path   = require('path');
 
 const _storage = multer.diskStorage({
-  destination: 'uploads/documents/',
+  destination: path.join(__dirname, '../../uploads/documents'),
   filename: (req, file, cb) => {
     // ex: <userId>_cni_1714000000000.jpg  — extension préservée pour affichage navigateur
     const ext  = path.extname(file.originalname).toLowerCase() || '.jpg';
@@ -229,7 +229,8 @@ const uploaderPhotoProfil = (req, res, next) => {
     if (err) return res.status(400).json({ success: false, message: err.message });
     if (!req.file) return res.status(400).json({ success: false, message: 'Aucune photo reçue.' });
     try {
-      const url = `${process.env.APP_URL}/uploads/photos/${req.file.filename}`;
+      const appUrl = process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`;
+      const url = `${appUrl}/uploads/photos/${req.file.filename}`;
       await req.user.update({ photo_profil: url });
       return res.json({ success: true, data: { photo_profil: url } });
     } catch (e) { next(e); }

@@ -19,7 +19,8 @@ const protect = async (req, res, next) => {
     }
     req.user = user;
     next();
-  } catch {
+  } catch (err) {
+    console.error('[Auth] Token invalide:', err.message);
     return res.status(401).json({ success: false, message: 'Token invalide ou expiré.' });
   }
 };
