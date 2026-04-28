@@ -64,5 +64,4 @@ app.listen(PORT, '0.0.0.0', () => {
 
 connectDB().catch((err) => {
   console.error('Échec connexion base de données :', err.message);
-  process.exit(1);
 });
