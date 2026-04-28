@@ -1,14 +1,19 @@
 const { Sequelize } = require('sequelize');
 
+const isProd = process.env.NODE_ENV === 'production';
+
 const sequelize = new Sequelize(process.env.DB_URL, {
   dialect: 'postgres',
-  logging: process.env.NODE_ENV === 'development' ? console.log : false,
+  logging: isProd ? false : console.log,
   pool: {
     max: 10,
     min: 0,
     acquire: 30000,
     idle: 10000,
   },
+  dialectOptions: isProd ? {
+    ssl: { require: true, rejectUnauthorized: false },
+  } : {},
 });
 
 const connectDB = async () => {
