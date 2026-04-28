@@ -17,11 +17,21 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 7d
+      - key: APP_URL
+        sync: false
+      - key: CINETPAY_API_KEY
+        sync: false
+      - key: CINETPAY_SITE_ID
+        sync: false
+      - key: CINETPAY_TRANSFER_PASSWORD
+        sync: false
+      - key: YESGO_COMMISSION_PERCENT
+        value: "10"
+      - key: BETA_MODE
+        value: "false"
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
-        sync: false
-      - key: APP_URL
         sync: false
 
 databases:

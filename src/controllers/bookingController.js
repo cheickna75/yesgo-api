@@ -305,7 +305,6 @@ const terminerCourse = async (req, res, next) => {
         conducteur,
         montantBrut: montant,
         bookingId:   reservation.id,
-        route,
       }).catch((err) => console.error('[Payout] Erreur:', err.message));
     }
 

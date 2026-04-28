@@ -1,7 +1,6 @@
 const axios  = require('axios');
 const crypto = require('crypto');
 const { Booking, Ride, User, Notification } = require('../models');
-const { sequelize } = require('../config/database');
 const { sendPush } = require('../services/pushService');
 
 const CINETPAY_URL          = 'https://api-checkout.cinetpay.com/v2/payment';
@@ -108,7 +107,7 @@ const initierPaiement = async (req, res, next) => {
     return res.status(201).json({
       success:     true,
       booking_id:  reservation.id,
-      payment_url: data.data.payment_url,
+      payment_url: cinetpayData.data.payment_url,
       montant,
       currency:    sym,
     });
@@ -174,7 +173,7 @@ const notifierPaiement = async (req, res) => {
 
 // Virement automatique vers le mobile money du conducteur
 // Appelé depuis terminerCourse — toujours CinetPay Transfer
-const payerConducteur = async ({ conducteur, montantBrut, bookingId, route }) => {
+const payerConducteur = async ({ conducteur, montantBrut, bookingId }) => {
   const password = process.env.CINETPAY_TRANSFER_PASSWORD;
   const creds    = getCreds();
   const taux     = getCommission();

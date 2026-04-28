@@ -148,9 +148,6 @@ const soumettreDocuments = (req, res, next) => {
       return res.status(400).json({ success: false, message: err.message });
     }
 
-    console.log('FILES RECEIVED:', req.files);
-    console.log('[upload] content-type:', req.headers['content-type']);
-
     const files = req.files || [];
     if (files.length === 0) {
       return res.status(400).json({ success: false, message: 'Aucun fichier reçu par le serveur.' });
