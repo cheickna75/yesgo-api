@@ -57,16 +57,12 @@ app.use((req, res) => {
 
 app.use(errorHandler);
 
-const start = async () => {
-  try {
-    await connectDB();
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Serveur démarré sur le port ${PORT} [${process.env.NODE_ENV}]`);
-    });
-  } catch (err) {
-    console.error('Échec du démarrage du serveur :', err.message);
-    process.exit(1);
-  }
-};
+// Démarrer le serveur AVANT la connexion DB pour que le healthcheck réponde immédiatement
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Serveur démarré sur le port ${PORT} [${process.env.NODE_ENV}]`);
+});
 
-start();
+connectDB().catch((err) => {
+  console.error('Échec connexion base de données :', err.message);
+  process.exit(1);
+});
