@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { Ride, User } = require('../models');
+const { Ride, User, Booking } = require('../models');
 
 const isValidPoint = (point) =>
   point &&
@@ -165,4 +165,60 @@ const mesTrajets = async (req, res, next) => {
   }
 };
 
-module.exports = { createRide, getRides, searchRides, mesTrajets };
+const modifierTrajet = async (req, res, next) => {
+  try {
+    const ride = await Ride.findByPk(req.params.id);
+    if (!ride) return res.status(404).json({ success: false, message: 'Trajet introuvable.' });
+    if (ride.conducteur_id !== req.user.id) return res.status(403).json({ success: false, message: 'Accès refusé.' });
+    if (!['actif', 'complet'].includes(ride.statut)) {
+      return res.status(400).json({ success: false, message: 'Seuls les trajets actifs peuvent être modifiés.' });
+    }
+
+    const { prix, places, date_heure } = req.body;
+    const updates = {};
+    if (prix !== undefined) {
+      const p = parseFloat(prix);
+      if (isNaN(p) || p <= 0) return res.status(400).json({ success: false, message: 'Prix invalide.' });
+      updates.prix = p;
+    }
+    if (places !== undefined) {
+      const pl = parseInt(places, 10);
+      if (isNaN(pl) || pl < 1) return res.status(400).json({ success: false, message: 'Nombre de places invalide.' });
+      updates.places = pl;
+    }
+    if (date_heure !== undefined) {
+      if (!date_heure) return res.status(400).json({ success: false, message: 'Date invalide.' });
+      updates.date_heure = date_heure;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, message: 'Aucun champ à modifier.' });
+    }
+
+    await ride.update(updates);
+    return res.json({ success: true, data: ride });
+  } catch (err) { next(err); }
+};
+
+const supprimerTrajet = async (req, res, next) => {
+  try {
+    const ride = await Ride.findByPk(req.params.id);
+    if (!ride) return res.status(404).json({ success: false, message: 'Trajet introuvable.' });
+    if (ride.conducteur_id !== req.user.id) return res.status(403).json({ success: false, message: 'Accès refusé.' });
+
+    const reservationsActives = await Booking.count({
+      where: { ride_id: ride.id, statut: ['en_attente', 'accepte'] },
+    });
+    if (reservationsActives > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Impossible de supprimer : ${reservationsActives} réservation(s) en cours. Refusez-les d'abord.`,
+      });
+    }
+
+    await ride.destroy();
+    return res.json({ success: true, message: 'Trajet supprimé.' });
+  } catch (err) { next(err); }
+};
+
+module.exports = { createRide, getRides, searchRides, mesTrajets, modifierTrajet, supprimerTrajet };
