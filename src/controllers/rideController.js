@@ -174,7 +174,7 @@ const modifierTrajet = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Seuls les trajets actifs peuvent être modifiés.' });
     }
 
-    const { prix, places, date_heure } = req.body;
+    const { prix, places, date_heure, depart, arrivee, depart_label, arrivee_label } = req.body;
     const updates = {};
     if (prix !== undefined) {
       const p = parseFloat(prix);
@@ -190,6 +190,16 @@ const modifierTrajet = async (req, res, next) => {
       if (!date_heure) return res.status(400).json({ success: false, message: 'Date invalide.' });
       updates.date_heure = date_heure;
     }
+    if (depart !== undefined) {
+      if (!isValidPoint(depart)) return res.status(400).json({ success: false, message: 'Point de départ invalide.' });
+      updates.depart = depart;
+    }
+    if (arrivee !== undefined) {
+      if (!isValidPoint(arrivee)) return res.status(400).json({ success: false, message: 'Point d\'arrivée invalide.' });
+      updates.arrivee = arrivee;
+    }
+    if (depart_label !== undefined) updates.depart_label = depart_label;
+    if (arrivee_label !== undefined) updates.arrivee_label = arrivee_label;
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ success: false, message: 'Aucun champ à modifier.' });
