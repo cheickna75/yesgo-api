@@ -61,6 +61,10 @@ const initierPaiement = async (req, res, next) => {
       statut:            'en_attente',
     });
 
+    await trajet.decrement('places', { by: nbPlaces });
+    await trajet.reload();
+    if (trajet.places <= 0) await trajet.update({ statut: 'complet' });
+
     const appUrl        = process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`;
     const transactionId = `YESGO_BK_${reservation.id}_${Date.now()}`;
 

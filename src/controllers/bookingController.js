@@ -38,6 +38,10 @@ const creerReservation = async (req, res, next) => {
       statut:           'en_attente',
     });
 
+    await trajet.decrement('places', { by: nbPlaces });
+    await trajet.reload();
+    if (trajet.places <= 0) await trajet.update({ statut: 'complet' });
+
     const route = `${trajet.depart_label} → ${trajet.arrivee_label}`;
     await Notification.create({
       user_id: trajet.conducteur_id,
@@ -127,15 +131,16 @@ const mettreAJourStatut = async (req, res, next) => {
       await reservation.update({ statut }, { transaction: t });
 
       if (statut === 'accepte' && ancienStatut === 'en_attente') {
-        await reservation.trajet.decrement('places', { by: nbPlaces, transaction: t });
+        // places déjà décrémentées à la création de la réservation
         await reservation.trajet.reload({ transaction: t });
         if (reservation.trajet.places <= 0) {
           await reservation.trajet.update({ statut: 'complet' }, { transaction: t });
         }
       }
 
-      if (['refuse', 'annule'].includes(statut) && ancienStatut === 'accepte') {
+      if (['refuse', 'annule'].includes(statut) && ['en_attente', 'accepte'].includes(ancienStatut)) {
         await reservation.trajet.increment('places', { by: nbPlaces }, { transaction: t });
+        await reservation.trajet.reload({ transaction: t });
         if (reservation.trajet.statut === 'complet') {
           await reservation.trajet.update({ statut: 'actif' }, { transaction: t });
         }
