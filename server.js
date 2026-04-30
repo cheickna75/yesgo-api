@@ -1,9 +1,11 @@
 require('dotenv').config();
 const path        = require('path');
 const fs          = require('fs');
+const http        = require('http');
 const express     = require('express');
 const cors        = require('cors');
 const rateLimit   = require('express-rate-limit');
+const { Server }  = require('socket.io');
 
 // Garantir l'existence des dossiers uploads au démarrage
 const uploadsDir = path.join(__dirname, 'uploads', 'documents');
@@ -16,7 +18,21 @@ require('./src/models'); // charge les modèles et leurs associations
 const routes = require('./src/routes/index');
 const errorHandler = require('./src/middleware/errorHandler');
 
-const app = express();
+const app    = express();
+const server = http.createServer(app);
+const io     = new Server(server, {
+  cors: { origin: true, methods: ['GET', 'POST'], credentials: true },
+});
+
+app.set('io', io);
+
+io.on('connection', (socket) => {
+  // Le client s'identifie en envoyant son userId
+  socket.on('join', (userId) => {
+    if (userId) socket.join(`user-${userId}`);
+  });
+});
+
 const PORT = process.env.PORT || 3000;
 
 // CORS — autorise toutes les origines (API mobile + admin panel)
@@ -88,7 +104,7 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 // Démarrer le serveur AVANT la connexion DB pour que le healthcheck réponde immédiatement
-app.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Serveur démarré sur le port ${PORT} [${process.env.NODE_ENV}]`);
 });
 

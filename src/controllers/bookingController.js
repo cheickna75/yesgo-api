@@ -54,6 +54,18 @@ const creerReservation = async (req, res, next) => {
       await sendPush(trajet.conducteur.push_token, '🚖 Nouvelle demande', `${req.user.nom} — ${route} (espèces)`);
     }
 
+    // Temps réel — notifier le conducteur immédiatement
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user-${trajet.conducteur_id}`).emit('nouvelle_reservation', {
+        booking_id:   reservation.id,
+        ride_id,
+        passager_nom: req.user.nom,
+        places:       nbPlaces,
+        route,
+      });
+    }
+
     return res.status(201).json({ success: true, data: reservation });
   } catch (err) { next(err); }
 };
@@ -185,6 +197,19 @@ const mettreAJourStatut = async (req, res, next) => {
       });
       if (reservation.passager?.push_token) {
         await sendPush(reservation.passager.push_token, '❌ Réservation refusée', `Le conducteur a refusé : ${route}`);
+      }
+    }
+
+    // Temps réel — notifier le passager immédiatement
+    if (['accepte', 'refuse'].includes(statut)) {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`user-${reservation.passager_id}`).emit('statut_reservation', {
+          booking_id:    reservation.id,
+          statut,
+          route,
+          conducteur_nom: req.user.nom,
+        });
       }
     }
 
