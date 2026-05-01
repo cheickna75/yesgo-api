@@ -2,6 +2,37 @@ const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { Ride, User, Booking } = require('../models');
 
+// ── Cache mémoire simple (TTL 45s) ───────────────────────────────
+const TTL_MS = 45 * 1000;
+const _cache = {
+  rides:    { data: null, expiresAt: 0 },
+  search:   new Map(),   // clé = "lat_lng_rayon"
+};
+const MAX_SEARCH_ENTRIES = 30;
+
+const cacheGet = (key) => {
+  if (key === 'rides') {
+    const e = _cache.rides;
+    return e.data && Date.now() < e.expiresAt ? e.data : null;
+  }
+  const e = _cache.search.get(key);
+  return e && Date.now() < e.expiresAt ? e.data : null;
+};
+const cacheSet = (key, data) => {
+  if (key === 'rides') {
+    _cache.rides = { data, expiresAt: Date.now() + TTL_MS };
+  } else {
+    if (_cache.search.size >= MAX_SEARCH_ENTRIES) {
+      _cache.search.delete(_cache.search.keys().next().value);
+    }
+    _cache.search.set(key, { data, expiresAt: Date.now() + TTL_MS });
+  }
+};
+const invalidateCache = () => {
+  _cache.rides = { data: null, expiresAt: 0 };
+  _cache.search.clear();
+};
+
 const isValidPoint = (point) =>
   point &&
   point.type === 'Point' &&
@@ -45,6 +76,7 @@ const createRide = async (req, res, next) => {
       type_vehicule:   vehiculeType,
     });
 
+    invalidateCache();
     return res.status(201).json({ success: true, data: ride });
   } catch (err) {
     next(err);
@@ -53,6 +85,9 @@ const createRide = async (req, res, next) => {
 
 const getRides = async (req, res, next) => {
   try {
+    const cached = cacheGet('rides');
+    if (cached) return res.json({ success: true, count: cached.length, data: cached, cached: true });
+
     const rows = await sequelize.query(
       `SELECT
           r.id, r.depart_label, r.arrivee_label, r.date_heure,
@@ -119,6 +154,7 @@ const getRides = async (req, res, next) => {
       },
     }));
 
+    cacheSet('rides', data);
     return res.json({ success: true, count: data.length, data });
   } catch (err) {
     next(err);
@@ -154,6 +190,13 @@ const searchRides = async (req, res, next) => {
     }
 
     const rayonMetres = rayon * 1000;
+
+    // Cache : clé = coordonnées arrondies à 2 décimales + rayon
+    const cacheKey = `${lat.toFixed(2)}_${lng.toFixed(2)}_${rayon}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+      return res.json({ success: true, count: cached.length, data: cached, cached: true });
+    }
 
     // Requête SQL brute pour éviter les limitations de Sequelize avec PostGIS
     const rows = await sequelize.query(
@@ -221,6 +264,7 @@ const searchRides = async (req, res, next) => {
       distance_km: Math.round(r.dist_m / 10) / 100,
     }));
 
+    cacheSet(cacheKey, data);
     return res.json({
       success: true,
       count: data.length,
@@ -286,6 +330,7 @@ const modifierTrajet = async (req, res, next) => {
     }
 
     await ride.update(updates);
+    invalidateCache();
     return res.json({ success: true, data: ride });
   } catch (err) { next(err); }
 };
@@ -307,6 +352,7 @@ const supprimerTrajet = async (req, res, next) => {
     }
 
     await ride.destroy();
+    invalidateCache();
     return res.json({ success: true, message: 'Trajet supprimé.' });
   } catch (err) { next(err); }
 };
