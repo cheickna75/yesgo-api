@@ -53,25 +53,62 @@ const createRide = async (req, res, next) => {
 
 const getRides = async (req, res, next) => {
   try {
-    const deuxHeuresAvant = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const rows = await sequelize.query(
+      `SELECT
+          r.id, r.depart_label, r.arrivee_label, r.date_heure,
+          r.prix, r.places, r.statut, r.conducteur_id,
+          r.type_vehicule, r.currency, r.currency_symbol,
+          r."createdAt", r."updatedAt",
+          ST_AsGeoJSON(r.depart)::json  AS depart,
+          ST_AsGeoJSON(r.arrivee)::json AS arrivee,
+          u.id              AS u_id,
+          u.nom             AS u_nom,
+          u.telephone       AS u_telephone,
+          u.type_vehicule   AS u_type_vehicule,
+          u.marque_vehicule AS u_marque_vehicule,
+          u.modele_vehicule AS u_modele_vehicule,
+          u.photo_profil    AS u_photo_profil
+       FROM rides r
+       JOIN users u ON r.conducteur_id = u.id
+       WHERE r.statut = 'actif'
+         AND (
+           r.date_heure >= NOW() - INTERVAL '2 hours'
+           OR EXISTS (
+             SELECT 1 FROM bookings b
+             WHERE b.ride_id = r.id
+               AND b.statut IN ('en_attente', 'accepte')
+           )
+         )
+       ORDER BY r.date_heure ASC`,
+      { type: sequelize.QueryTypes.SELECT }
+    );
 
-    const rides = await Ride.findAll({
-      where: {
-        statut: 'actif',
-        // Afficher seulement si départ < 2h OU au moins une réservation active
-        [Op.or]: [
-          { date_heure: { [Op.gte]: deuxHeuresAvant } },
-          sequelize.literal(`EXISTS (
-            SELECT 1 FROM bookings b
-            WHERE b.ride_id = "Ride".id
-              AND b.statut IN ('en_attente', 'accepte')
-          )`),
-        ],
+    const data = rows.map((r) => ({
+      id:              r.id,
+      depart:          r.depart,
+      arrivee:         r.arrivee,
+      depart_label:    r.depart_label,
+      arrivee_label:   r.arrivee_label,
+      date_heure:      r.date_heure,
+      prix:            r.prix,
+      places:          r.places,
+      statut:          r.statut,
+      conducteur_id:   r.conducteur_id,
+      type_vehicule:   r.type_vehicule,
+      currency:        r.currency,
+      currency_symbol: r.currency_symbol,
+      conducteur: {
+        id:              r.u_id,
+        nom:             r.u_nom,
+        telephone:       r.u_telephone,
+        type_vehicule:   r.u_type_vehicule,
+        marque_vehicule: r.u_marque_vehicule,
+        modele_vehicule: r.u_modele_vehicule,
+        photo_profil:    r.u_photo_profil,
       },
-      include: [{ model: User, as: 'conducteur', attributes: ['id', 'nom', 'telephone', 'type_vehicule', 'marque_vehicule', 'modele_vehicule', 'photo_profil'] }],
-      order: [['date_heure', 'ASC']],
-    });
-    return res.json({ success: true, count: rides.length, data: rides });
+    }));
+
+    return res.json({ success: true, count: data.length, data });
   } catch (err) {
     next(err);
   }
