@@ -1,6 +1,6 @@
 const { Router }    = require('express');
 const rateLimit      = require('express-rate-limit');
-const { register, login, moi, demanderOTP, resetPassword, changerRole, soumettreDocuments, mettreAJourVehicule, mettreAJourNumeroPaiement, uploaderPhotoProfil } = require('../controllers/authController');
+const { register, login, moi, demanderOTPInscription, demanderOTP, resetPassword, changerRole, soumettreDocuments, mettreAJourVehicule, mettreAJourNumeroPaiement, uploaderPhotoProfil } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
 const router = Router();
@@ -14,6 +14,7 @@ const resetPasswordLimiter = rateLimit({
   message: { success: false, message: 'Trop de tentatives de réinitialisation. Réessayez dans 1 heure.' },
 });
 
+router.post('/register/otp', demanderOTPInscription);
 router.post('/register', register);
 router.post('/login', login);
 router.get('/moi', protect, moi);

@@ -6,21 +6,34 @@ const genererToken = (id) =>
 
 const register = async (req, res, next) => {
   try {
-    const { nom, telephone, mot_de_passe, est_conducteur } = req.body;
+    const { nom, telephone, mot_de_passe, est_conducteur, type_vehicule, otp } = req.body;
 
     if (!nom || !telephone || !mot_de_passe) {
-      return res.status(400).json({ success: false, message: 'nom, telephone et mot_de_passe sont requis.' });
+      return res.status(400).json({ success: false, message: 'Remplis tous les champs obligatoires.' });
     }
     if (mot_de_passe.length < 6) {
       return res.status(400).json({ success: false, message: 'Le mot de passe doit contenir au moins 6 caractères.' });
     }
+
+    // Vérification OTP
+    const stored = otpStore.get(`reg_${telephone}`);
+    if (!otp || !stored) {
+      return res.status(400).json({ success: false, message: 'Code de vérification requis. Demande un nouveau code.' });
+    }
+    if (Date.now() > stored.expiresAt) {
+      otpStore.delete(`reg_${telephone}`);
+      return res.status(400).json({ success: false, message: 'Le code a expiré. Demande un nouveau code.' });
+    }
+    if (stored.code !== String(otp)) {
+      return res.status(400).json({ success: false, message: 'Code incorrect. Vérifie le SMS reçu.' });
+    }
+    otpStore.delete(`reg_${telephone}`);
 
     const existant = await User.findOne({ where: { telephone } });
     if (existant) {
       return res.status(409).json({ success: false, message: 'Ce numéro de téléphone est déjà utilisé.' });
     }
 
-    const { type_vehicule } = req.body;
     const estConducteur = est_conducteur || false;
     const user = await User.create({
       nom, telephone, mot_de_passe,
@@ -105,6 +118,25 @@ const envoyerOTPSMS = async (telephone, code) => {
   } else {
     // Mode développement : afficher dans les logs Railway
     console.log(`[OTP] ${telephone} → ${code}`);
+  }
+};
+
+const demanderOTPInscription = async (req, res, next) => {
+  try {
+    const { telephone } = req.body;
+    if (!telephone) {
+      return res.status(400).json({ success: false, message: 'Numéro de téléphone requis.' });
+    }
+    const existant = await User.findOne({ where: { telephone } });
+    if (existant) {
+      return res.status(409).json({ success: false, message: 'Ce numéro est déjà associé à un compte.' });
+    }
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    otpStore.set(`reg_${telephone}`, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
+    await envoyerOTPSMS(telephone, code);
+    return res.json({ success: true, message: 'Code de vérification envoyé par SMS.' });
+  } catch (err) {
+    next(err);
   }
 };
 
@@ -288,4 +320,4 @@ const uploaderPhotoProfil = (req, res, next) => {
   });
 };
 
-module.exports = { register, login, moi, demanderOTP, resetPassword, changerRole, soumettreDocuments, mettreAJourVehicule, mettreAJourNumeroPaiement, uploaderPhotoProfil };
+module.exports = { register, login, moi, demanderOTPInscription, demanderOTP, resetPassword, changerRole, soumettreDocuments, mettreAJourVehicule, mettreAJourNumeroPaiement, uploaderPhotoProfil };
