@@ -71,14 +71,7 @@ const getRides = async (req, res, next) => {
        FROM rides r
        JOIN users u ON r.conducteur_id = u.id
        WHERE r.statut = 'actif'
-         AND (
-           r.date_heure >= NOW() - INTERVAL '2 hours'
-           OR EXISTS (
-             SELECT 1 FROM bookings b
-             WHERE b.ride_id = r.id
-               AND b.statut IN ('en_attente', 'accepte')
-           )
-         )
+         AND r.date_heure >= NOW()
        ORDER BY r.date_heure ASC`,
       { type: sequelize.QueryTypes.SELECT }
     );
@@ -163,14 +156,7 @@ const searchRides = async (req, res, next) => {
        JOIN users u ON r.conducteur_id = u.id
        WHERE r.statut = 'actif'
          AND ST_DWithin(r.depart::geography, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :rayon)
-         AND (
-           r.date_heure >= NOW() - INTERVAL '2 hours'
-           OR EXISTS (
-             SELECT 1 FROM bookings b
-             WHERE b.ride_id = r.id
-               AND b.statut IN ('en_attente', 'accepte')
-           )
-         )
+         AND r.date_heure >= NOW()
        ORDER BY dist_m ASC`,
       { replacements: { lat, lng, rayon: rayonMetres }, type: sequelize.QueryTypes.SELECT }
     );

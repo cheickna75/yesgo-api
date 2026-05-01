@@ -87,10 +87,26 @@ const moi = async (req, res) => {
   res.json({ success: true, data: req.user });
 };
 
-const { sendPush } = require('../services/pushService');
-
 // OTP store en mémoire : telephone → { code, expiresAt }
 const otpStore = new Map();
+
+// Envoie l'OTP par SMS (Twilio si configuré, sinon console)
+const envoyerOTPSMS = async (telephone, code) => {
+  const sid   = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from  = process.env.TWILIO_PHONE_NUMBER;
+  if (sid && token && from) {
+    const twilio = require('twilio')(sid, token);
+    await twilio.messages.create({
+      body: `Ton code YesGo : ${code}. Valable 10 minutes. Ne le partage pas.`,
+      from,
+      to: telephone,
+    });
+  } else {
+    // Mode développement : afficher dans les logs Railway
+    console.log(`[OTP] ${telephone} → ${code}`);
+  }
+};
 
 const demanderOTP = async (req, res, next) => {
   try {
@@ -102,17 +118,10 @@ const demanderOTP = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({ success: false, message: 'Aucun compte avec ce numéro.' });
     }
-    if (!user.push_token) {
-      return res.status(400).json({
-        success: false,
-        code: 'NO_PUSH_TOKEN',
-        message: 'Les notifications YesGo sont désactivées sur ton téléphone. Active-les dans Paramètres → Applications → YesGo → Notifications, puis réessaie.',
-      });
-    }
     const code = String(Math.floor(100000 + Math.random() * 900000));
     otpStore.set(telephone, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
-    await sendPush(user.push_token, 'Code YesGo', `Ton code de réinitialisation : ${code}`, { type: 'otp' });
-    return res.json({ success: true, message: 'Code envoyé par notification.' });
+    await envoyerOTPSMS(telephone, code);
+    return res.json({ success: true, message: 'Code envoyé par SMS.' });
   } catch (err) {
     next(err);
   }
