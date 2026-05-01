@@ -1,10 +1,5 @@
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
-const { sendPush } = require('../services/pushService');
-
-// Stockage OTP en mémoire : { telephone → { code, expiresAt } }
-// TTL 10 minutes — suffisant pour la réinitialisation
-const otpStore = new Map();
 
 const genererToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
@@ -92,14 +87,17 @@ const moi = async (req, res) => {
   res.json({ success: true, data: req.user });
 };
 
-// POST /api/auth/reset-password/otp  — étape 1 : envoyer le code par notification
+const { sendPush } = require('../services/pushService');
+
+// OTP store en mémoire : telephone → { code, expiresAt }
+const otpStore = new Map();
+
 const demanderOTP = async (req, res, next) => {
   try {
     const { telephone } = req.body;
     if (!telephone) {
-      return res.status(400).json({ success: false, message: 'telephone est requis.' });
+      return res.status(400).json({ success: false, message: 'Numéro de téléphone requis.' });
     }
-
     const user = await User.findOne({ where: { telephone } });
     if (!user) {
       return res.status(404).json({ success: false, message: 'Aucun compte avec ce numéro.' });
@@ -107,65 +105,50 @@ const demanderOTP = async (req, res, next) => {
     if (!user.push_token) {
       return res.status(400).json({
         success: false,
-        code:    'NO_PUSH_TOKEN',
+        code: 'NO_PUSH_TOKEN',
         message: 'Les notifications YesGo sont désactivées sur ton téléphone. Active-les dans Paramètres → Applications → YesGo → Notifications, puis réessaie.',
       });
     }
-
-    const code      = String(Math.floor(100000 + Math.random() * 900000));
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-    otpStore.set(telephone, { code, expiresAt });
-
-    await sendPush(
-      user.push_token,
-      '🔐 Code de réinitialisation YesGo',
-      `Votre code : ${code}  —  Valable 10 minutes. Ne le partagez jamais.`
-    );
-
-    console.log(`[OTP Reset] ${telephone} → ${code}`);
-
-    return res.json({ success: true, message: 'Code envoyé par notification sur votre téléphone.' });
-  } catch (err) { next(err); }
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    otpStore.set(telephone, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
+    await sendPush(user.push_token, 'Code YesGo', `Ton code de réinitialisation : ${code}`, { type: 'otp' });
+    return res.json({ success: true, message: 'Code envoyé par notification.' });
+  } catch (err) {
+    next(err);
+  }
 };
 
-// POST /api/auth/reset-password  — étape 2 : valider OTP + changer le mot de passe
 const resetPassword = async (req, res, next) => {
   try {
     const { telephone, otp, nouveau_mot_de_passe } = req.body;
-
     if (!telephone || !otp || !nouveau_mot_de_passe) {
-      return res.status(400).json({ success: false, message: 'telephone, otp et nouveau_mot_de_passe sont requis.' });
+      return res.status(400).json({ success: false, message: 'Remplis tous les champs pour réinitialiser ton mot de passe.' });
     }
     if (nouveau_mot_de_passe.length < 6) {
       return res.status(400).json({ success: false, message: 'Le mot de passe doit contenir au moins 6 caractères.' });
     }
-
-    // Vérifier l'OTP
-    const entry = otpStore.get(telephone);
-    if (!entry) {
-      return res.status(400).json({ success: false, message: 'Aucun code demandé pour ce numéro. Recommencez depuis le début.' });
+    const stored = otpStore.get(telephone);
+    if (!stored) {
+      return res.status(400).json({ success: false, message: 'Aucun code en attente. Demande un nouveau code.' });
     }
-    if (new Date() > entry.expiresAt) {
+    if (Date.now() > stored.expiresAt) {
       otpStore.delete(telephone);
-      return res.status(400).json({ success: false, message: 'Code expiré. Demandez un nouveau code.' });
+      return res.status(400).json({ success: false, message: 'Le code a expiré. Demande un nouveau code.' });
     }
-    if (entry.code !== String(otp).trim()) {
-      return res.status(400).json({ success: false, message: 'Code incorrect.' });
+    if (stored.code !== String(otp)) {
+      return res.status(400).json({ success: false, message: 'Code incorrect. Vérifie la notification reçue.' });
     }
-
-    // OTP valide — consommer et changer le mot de passe
     otpStore.delete(telephone);
-
     const user = await User.scope('withPassword').findOne({ where: { telephone } });
     if (!user) {
-      return res.status(404).json({ success: false, message: 'Compte introuvable.' });
+      return res.status(404).json({ success: false, message: 'Aucun compte avec ce numéro.' });
     }
     user.mot_de_passe = nouveau_mot_de_passe;
     await user.save();
-
-    return res.json({ success: true, message: 'Mot de passe mis à jour. Tu peux te connecter.' });
-  } catch (err) { next(err); }
+    return res.json({ success: true, message: 'Mot de passe mis à jour.' });
+  } catch (err) {
+    next(err);
+  }
 };
 
 const changerRole = async (req, res, next) => {

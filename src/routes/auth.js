@@ -18,7 +18,7 @@ router.post('/register', register);
 router.post('/login', login);
 router.get('/moi', protect, moi);
 router.post('/reset-password/otp', resetPasswordLimiter, demanderOTP);
-router.post('/reset-password',     resetPasswordLimiter, resetPassword);
+router.post('/reset-password', resetPasswordLimiter, resetPassword);
 router.post('/changer-role', protect, changerRole);
 router.put('/vehicule',         protect, mettreAJourVehicule);
 router.put('/numero-paiement',  protect, mettreAJourNumeroPaiement);
