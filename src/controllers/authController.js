@@ -108,7 +108,7 @@ const demanderOTP = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         code:    'NO_PUSH_TOKEN',
-        message: 'Notifications désactivées sur ce compte. Ouvre l\'application et active les notifications, puis réessaie.',
+        message: 'Les notifications YesGo sont désactivées sur ton téléphone. Active-les dans Paramètres → Applications → YesGo → Notifications, puis réessaie.',
       });
     }
 
