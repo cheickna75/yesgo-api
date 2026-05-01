@@ -70,8 +70,26 @@ const getRides = async (req, res, next) => {
           u.photo_profil    AS u_photo_profil
        FROM rides r
        JOIN users u ON r.conducteur_id = u.id
-       WHERE r.statut = 'actif'
-         AND r.date_heure >= NOW()
+       WHERE r.statut NOT IN ('termine', 'annule')
+         AND (
+           -- Trajet sans passager accepté : grace period 1h après le départ
+           (
+             NOT EXISTS (
+               SELECT 1 FROM bookings b
+               WHERE b.ride_id = r.id AND b.statut IN ('en_attente', 'accepte')
+             )
+             AND r.date_heure >= NOW() - INTERVAL '1 hour'
+           )
+           OR
+           -- Trajet avec passager(s) accepté(s) (conducteur en route) : grace period 2h
+           (
+             EXISTS (
+               SELECT 1 FROM bookings b
+               WHERE b.ride_id = r.id AND b.statut IN ('en_attente', 'accepte')
+             )
+             AND r.date_heure >= NOW() - INTERVAL '2 hours'
+           )
+         )
        ORDER BY r.date_heure ASC`,
       { type: sequelize.QueryTypes.SELECT }
     );
@@ -154,9 +172,27 @@ const searchRides = async (req, res, next) => {
           ST_Distance(r.depart::geography, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) AS dist_m
        FROM rides r
        JOIN users u ON r.conducteur_id = u.id
-       WHERE r.statut = 'actif'
+       WHERE r.statut NOT IN ('termine', 'annule')
          AND ST_DWithin(r.depart::geography, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :rayon)
-         AND r.date_heure >= NOW()
+         AND (
+           -- Trajet sans passager accepté : grace period 1h après le départ
+           (
+             NOT EXISTS (
+               SELECT 1 FROM bookings b
+               WHERE b.ride_id = r.id AND b.statut IN ('en_attente', 'accepte')
+             )
+             AND r.date_heure >= NOW() - INTERVAL '1 hour'
+           )
+           OR
+           -- Trajet avec passager(s) accepté(s) (conducteur en route) : grace period 2h
+           (
+             EXISTS (
+               SELECT 1 FROM bookings b
+               WHERE b.ride_id = r.id AND b.statut IN ('en_attente', 'accepte')
+             )
+             AND r.date_heure >= NOW() - INTERVAL '2 hours'
+           )
+         )
        ORDER BY dist_m ASC`,
       { replacements: { lat, lng, rayon: rayonMetres }, type: sequelize.QueryTypes.SELECT }
     );
