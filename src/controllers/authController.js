@@ -1,5 +1,10 @@
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
+const { sendPush } = require('../services/pushService');
+
+// Stockage OTP en mémoire : { telephone → { code, expiresAt } }
+// TTL 10 minutes — suffisant pour la réinitialisation
+const otpStore = new Map();
 
 const genererToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
@@ -87,26 +92,80 @@ const moi = async (req, res) => {
   res.json({ success: true, data: req.user });
 };
 
+// POST /api/auth/reset-password/otp  — étape 1 : envoyer le code par notification
+const demanderOTP = async (req, res, next) => {
+  try {
+    const { telephone } = req.body;
+    if (!telephone) {
+      return res.status(400).json({ success: false, message: 'telephone est requis.' });
+    }
+
+    const user = await User.findOne({ where: { telephone } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Aucun compte avec ce numéro.' });
+    }
+    if (!user.push_token) {
+      return res.status(400).json({
+        success: false,
+        code:    'NO_PUSH_TOKEN',
+        message: 'Notifications désactivées sur ce compte. Ouvre l\'application et active les notifications, puis réessaie.',
+      });
+    }
+
+    const code      = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    otpStore.set(telephone, { code, expiresAt });
+
+    await sendPush(
+      user.push_token,
+      '🔐 Code de réinitialisation YesGo',
+      `Votre code : ${code}  —  Valable 10 minutes. Ne le partagez jamais.`
+    );
+
+    console.log(`[OTP Reset] ${telephone} → ${code}`);
+
+    return res.json({ success: true, message: 'Code envoyé par notification sur votre téléphone.' });
+  } catch (err) { next(err); }
+};
+
+// POST /api/auth/reset-password  — étape 2 : valider OTP + changer le mot de passe
 const resetPassword = async (req, res, next) => {
   try {
-    const { telephone, nouveau_mot_de_passe } = req.body;
-    if (!telephone || !nouveau_mot_de_passe) {
-      return res.status(400).json({ success: false, message: 'telephone et nouveau_mot_de_passe sont requis.' });
+    const { telephone, otp, nouveau_mot_de_passe } = req.body;
+
+    if (!telephone || !otp || !nouveau_mot_de_passe) {
+      return res.status(400).json({ success: false, message: 'telephone, otp et nouveau_mot_de_passe sont requis.' });
     }
     if (nouveau_mot_de_passe.length < 6) {
       return res.status(400).json({ success: false, message: 'Le mot de passe doit contenir au moins 6 caractères.' });
     }
+
+    // Vérifier l'OTP
+    const entry = otpStore.get(telephone);
+    if (!entry) {
+      return res.status(400).json({ success: false, message: 'Aucun code demandé pour ce numéro. Recommencez depuis le début.' });
+    }
+    if (new Date() > entry.expiresAt) {
+      otpStore.delete(telephone);
+      return res.status(400).json({ success: false, message: 'Code expiré. Demandez un nouveau code.' });
+    }
+    if (entry.code !== String(otp).trim()) {
+      return res.status(400).json({ success: false, message: 'Code incorrect.' });
+    }
+
+    // OTP valide — consommer et changer le mot de passe
+    otpStore.delete(telephone);
+
     const user = await User.scope('withPassword').findOne({ where: { telephone } });
     if (!user) {
-      return res.status(404).json({ success: false, message: 'Aucun compte avec ce numéro.' });
+      return res.status(404).json({ success: false, message: 'Compte introuvable.' });
     }
-    // Assigner directement pour que beforeSave détecte le changement
     user.mot_de_passe = nouveau_mot_de_passe;
     await user.save();
-    return res.json({ success: true, message: 'Mot de passe mis à jour.' });
-  } catch (err) {
-    next(err);
-  }
+
+    return res.json({ success: true, message: 'Mot de passe mis à jour. Tu peux te connecter.' });
+  } catch (err) { next(err); }
 };
 
 const changerRole = async (req, res, next) => {
@@ -237,4 +296,4 @@ const uploaderPhotoProfil = (req, res, next) => {
   });
 };
 
-module.exports = { register, login, moi, resetPassword, changerRole, soumettreDocuments, mettreAJourVehicule, mettreAJourNumeroPaiement, uploaderPhotoProfil };
+module.exports = { register, login, moi, demanderOTP, resetPassword, changerRole, soumettreDocuments, mettreAJourVehicule, mettreAJourNumeroPaiement, uploaderPhotoProfil };

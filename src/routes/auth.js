@@ -1,6 +1,6 @@
 const { Router }    = require('express');
 const rateLimit      = require('express-rate-limit');
-const { register, login, moi, resetPassword, changerRole, soumettreDocuments, mettreAJourVehicule, mettreAJourNumeroPaiement, uploaderPhotoProfil } = require('../controllers/authController');
+const { register, login, moi, demanderOTP, resetPassword, changerRole, soumettreDocuments, mettreAJourVehicule, mettreAJourNumeroPaiement, uploaderPhotoProfil } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
 const router = Router();
@@ -17,7 +17,8 @@ const resetPasswordLimiter = rateLimit({
 router.post('/register', register);
 router.post('/login', login);
 router.get('/moi', protect, moi);
-router.post('/reset-password', resetPasswordLimiter, resetPassword);
+router.post('/reset-password/otp', resetPasswordLimiter, demanderOTP);
+router.post('/reset-password',     resetPasswordLimiter, resetPassword);
 router.post('/changer-role', protect, changerRole);
 router.put('/vehicule',         protect, mettreAJourVehicule);
 router.put('/numero-paiement',  protect, mettreAJourNumeroPaiement);
