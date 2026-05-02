@@ -66,6 +66,23 @@ const toggleActif = async (req, res, next) => {
   }
 };
 
+const supprimerUtilisateur = async (req, res, next) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'Utilisateur introuvable.' });
+    if (user.est_admin) return res.status(403).json({ success: false, message: 'Impossible de supprimer un administrateur.' });
+    if (req.user.id === user.id) return res.status(403).json({ success: false, message: 'Impossible de supprimer votre propre compte.' });
+
+    const nom = user.nom;
+    const tel = user.telephone;
+    await user.destroy();
+
+    return res.json({ success: true, message: `Compte de ${nom} (${tel}) supprimé définitivement.` });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const getReservations = async (req, res, next) => {
   try {
     const reservations = await Booking.findAll({
@@ -230,4 +247,4 @@ const resetDocuments = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getStats, getUtilisateurs, toggleActif, getReservations, getAdmins, creerAdmin, getConducteurs, verifierConducteur, getDocumentFiles, resetDocuments };
+module.exports = { getStats, getUtilisateurs, toggleActif, supprimerUtilisateur, getReservations, getAdmins, creerAdmin, getConducteurs, verifierConducteur, getDocumentFiles, resetDocuments };

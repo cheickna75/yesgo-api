@@ -696,10 +696,16 @@
         </td>
         <td>
           ${u.est_admin ? '<span class="text-muted small">—</span>' : `
-            <button class="btn btn-sm ${u.actif ? 'btn-outline-danger' : 'btn-outline-success'} py-0 px-2"
-              onclick="toggleUser('${u.id}', ${u.actif})">
-              ${u.actif ? '<i class="bi bi-slash-circle"></i> Désactiver' : '<i class="bi bi-check-circle"></i> Réactiver'}
-            </button>`}
+            <div class="d-flex gap-1 flex-wrap">
+              <button class="btn btn-sm ${u.actif ? 'btn-outline-danger' : 'btn-outline-success'} py-0 px-2"
+                onclick="toggleUser('${u.id}', ${u.actif})">
+                ${u.actif ? '<i class="bi bi-slash-circle"></i> Désactiver' : '<i class="bi bi-check-circle"></i> Réactiver'}
+              </button>
+              <button class="btn btn-sm btn-danger py-0 px-2"
+                onclick="supprimerUser('${u.id}', '${u.nom.replace(/'/g, "\\'")}', '${u.telephone}')">
+                <i class="bi bi-trash"></i> Supprimer
+              </button>
+            </div>`}
         </td>
       </tr>`).join('');
   }
@@ -715,6 +721,16 @@
     if (!confirm(`${estActif ? 'Désactiver' : 'Réactiver'} ce compte ?`)) return;
     try {
       await apiFetch(`/admin/utilisateurs/${id}/toggle`, { method: 'PATCH' });
+      await loadUsers();
+    } catch (e) {
+      alert('Erreur : ' + e.message);
+    }
+  }
+
+  async function supprimerUser(id, nom, telephone) {
+    if (!confirm(`⚠️ SUPPRESSION DÉFINITIVE\n\nCompte : ${nom}\nTéléphone : ${telephone}\n\nCette action est irréversible. Le numéro pourra être réutilisé pour une nouvelle inscription.\n\nConfirmer ?`)) return;
+    try {
+      await apiFetch(`/admin/utilisateurs/${id}`, { method: 'DELETE' });
       await loadUsers();
     } catch (e) {
       alert('Erreur : ' + e.message);
