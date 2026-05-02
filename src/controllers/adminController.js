@@ -75,7 +75,29 @@ const supprimerUtilisateur = async (req, res, next) => {
 
     const nom = user.nom;
     const tel = user.telephone;
-    await user.destroy();
+    const id  = user.id;
+
+    await sequelize.transaction(async (t) => {
+      const q = (sql) => sequelize.query(sql, { replacements: { id }, transaction: t });
+
+      // 1. Avis (auteur ou conducteur noté)
+      await q(`DELETE FROM reviews WHERE auteur_id = :id OR conducteur_id = :id`);
+      // 2. Transactions financières
+      await q(`DELETE FROM transactions WHERE user_id = :id`);
+      // 3. Notifications
+      await q(`DELETE FROM notifications WHERE user_id = :id`);
+      // 4. Messages envoyés
+      await q(`DELETE FROM messages WHERE auteur_id = :id`);
+      // 5. Participation aux conversations
+      await q(`DELETE FROM conversation_participants WHERE user_id = :id`);
+      // 6. Réservations comme passager
+      await q(`DELETE FROM bookings WHERE passager_id = :id`);
+      // 7. Réservations sur les trajets du conducteur, puis les trajets
+      await q(`DELETE FROM bookings WHERE ride_id IN (SELECT id FROM rides WHERE conducteur_id = :id)`);
+      await q(`DELETE FROM rides WHERE conducteur_id = :id`);
+      // 8. Utilisateur
+      await user.destroy({ transaction: t });
+    });
 
     return res.json({ success: true, message: `Compte de ${nom} (${tel}) supprimé définitivement.` });
   } catch (err) {
