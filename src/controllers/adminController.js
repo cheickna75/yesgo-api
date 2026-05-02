@@ -87,7 +87,7 @@ const supprimerUtilisateur = async (req, res, next) => {
       // 3. Notifications
       await q(`DELETE FROM notifications WHERE user_id = :id`);
       // 4. Messages envoyés
-      await q(`DELETE FROM messages WHERE auteur_id = :id`);
+      await q(`DELETE FROM messages WHERE sender_id = :id`);
       // 5. Participation aux conversations
       await q(`DELETE FROM conversation_participants WHERE user_id = :id`);
       // 6. Réservations comme passager
