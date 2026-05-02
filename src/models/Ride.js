@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
+const crypto = require('crypto');
 
 const Ride = sequelize.define('Ride', {
   id: {
@@ -63,9 +64,66 @@ const Ride = sequelize.define('Ride', {
     defaultValue: 'FCFA',
     allowNull: false,
   },
+
+  // ── #2 Trajets à étapes (Waypoints) ─────────────────────────────
+  // Format : [{ ordre: 1, label: 'Point G', lat: 12.65, lng: -8.01 }, ...]
+  waypoints: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    allowNull: true,
+    comment: 'Étapes intermédiaires ordonnées entre départ et arrivée',
+  },
+
+  // ── #3 Trajets récurrents ────────────────────────────────────────
+  est_recurrent: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Ce trajet se répète automatiquement selon jours_recurrence',
+  },
+  jours_recurrence: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    allowNull: true,
+    comment: 'Jours actifs : tableau d\'entiers [0=dim, 1=lun, 2=mar, 3=mer, 4=jeu, 5=ven, 6=sam]',
+  },
+  recurrence_fin: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Date limite de génération des occurrences récurrentes',
+  },
+  serie_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    comment: 'UUID partagé par toutes les occurrences d\'une même série récurrente',
+  },
+  places_initial: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Nombre de places à la création — utilisé pour réinitialiser les occurrences récurrentes',
+  },
+
+  // ── #3 Sécurité passager — lien de suivi ────────────────────────
+  suivi_token: {
+    type: DataTypes.STRING(64),
+    allowNull: true,
+    unique: true,
+    comment: 'Token unique pour partager un lien de suivi en temps réel à un proche',
+  },
+
 }, {
   tableName: 'rides',
   timestamps: true,
+});
+
+// Génère automatiquement le token de suivi à la création
+Ride.beforeCreate((ride) => {
+  if (!ride.suivi_token) {
+    ride.suivi_token = crypto.randomBytes(32).toString('hex');
+  }
+  // Mémorise le nombre de places initial pour les séries récurrentes
+  if (ride.places_initial == null) {
+    ride.places_initial = ride.places;
+  }
 });
 
 module.exports = Ride;

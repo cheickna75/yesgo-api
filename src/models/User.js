@@ -77,10 +77,54 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING(500),
     allowNull: true,
   },
+
+  // ── #4 Profil conducteur ─────────────────────────────────────────
+  numero_immatriculation: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    comment: 'Plaque d\'immatriculation du véhicule (conducteurs uniquement)',
+  },
+
+  // ── #1 Internationalisation ──────────────────────────────────────
+  langue: {
+    type: DataTypes.ENUM('fr', 'en', 'ar'),
+    defaultValue: 'fr',
+    allowNull: false,
+    comment: 'Langue préférée de l\'utilisateur (détectée ou choisie)',
+  },
+
+  // ── #5 Gamification / Parrainage ────────────────────────────────
+  code_parrainage: {
+    type: DataTypes.STRING(10),
+    allowNull: true,
+    unique: true,
+    comment: 'Code unique partageable pour parrainer de nouveaux utilisateurs',
+  },
+  parraine_par: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    comment: 'user_id du parrain qui a recruté cet utilisateur',
+  },
+  commission_bonus_until: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Le conducteur ne paie pas de commission jusqu\'à cette date (bonus partage)',
+  },
+  premier_trajet_publie: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Passe à true dès que le conducteur publie son 1er trajet',
+  },
+  partages_reseaux: {
+    type: DataTypes.JSON,
+    defaultValue: [],
+    allowNull: true,
+    comment: 'Réseaux sur lesquels l\'utilisateur a partagé l\'app (facebook, whatsapp, instagram, snapchat)',
+  },
+
 }, {
   tableName: 'users',
   timestamps: true,
-  // Jamais retourner le mot de passe dans les réponses JSON
   defaultScope: {
     attributes: { exclude: ['mot_de_passe'] },
   },
@@ -96,8 +140,27 @@ User.beforeSave(async (user) => {
   }
 });
 
+// Génère un code de parrainage unique à la création
+User.beforeCreate(async (user) => {
+  if (!user.code_parrainage) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code;
+    let exists = true;
+    while (exists) {
+      code = Array.from({ length: 7 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+      exists = await User.findOne({ where: { code_parrainage: code } });
+    }
+    user.code_parrainage = code;
+  }
+});
+
 User.prototype.verifierMotDePasse = function (motDePasse) {
   return bcrypt.compare(motDePasse, this.mot_de_passe);
+};
+
+// Vrai si le conducteur bénéficie encore du bonus de commission
+User.prototype.aBonusCommission = function () {
+  return this.commission_bonus_until && new Date() < new Date(this.commission_bonus_until);
 };
 
 module.exports = User;

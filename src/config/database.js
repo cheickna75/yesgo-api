@@ -21,7 +21,7 @@ const connectDB = async () => {
   console.log('PostgreSQL connecté avec succès.');
   await sequelize.query('CREATE EXTENSION IF NOT EXISTS postgis;');
   console.log('Extension PostGIS activée.');
-  await sequelize.sync({ alter: process.env.NODE_ENV !== 'production' });
+  await sequelize.sync({ alter: true });
   console.log('Modèles synchronisés avec la base de données.');
 
   // ── Index de performance (idempotents — safe à relancer) ────────
