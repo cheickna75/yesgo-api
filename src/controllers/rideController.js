@@ -105,9 +105,22 @@ const createRide = async (req, res, next) => {
         if (!wp.label || typeof wp.lat !== 'number' || typeof wp.lng !== 'number') {
           return res.status(400).json({ success: false, message: 'Chaque étape doit avoir label, lat, lng.' });
         }
+        if (typeof wp.prix !== 'number' || wp.prix <= 0) {
+          return res.status(400).json({ success: false, message: `L'étape "${wp.label}" doit avoir un prix > 0.` });
+        }
+      }
+      // Vérifier que les prix des étapes sont croissants et inférieurs au prix final
+      const prixFinal = parseFloat(prix);
+      for (let i = 0; i < waypoints.length; i++) {
+        if (waypoints[i].prix >= prixFinal) {
+          return res.status(400).json({ success: false, message: `Le prix de l'étape ${i + 1} doit être inférieur au prix final (${prixFinal}).` });
+        }
+        if (i > 0 && waypoints[i].prix <= waypoints[i - 1].prix) {
+          return res.status(400).json({ success: false, message: `Les prix des étapes doivent être croissants dans l'ordre du trajet.` });
+        }
       }
       waypointsData = waypoints.map((wp, i) => ({
-        ordre: i + 1, label: wp.label, lat: wp.lat, lng: wp.lng,
+        ordre: i + 1, label: wp.label, lat: wp.lat, lng: wp.lng, prix: wp.prix,
       }));
     }
 

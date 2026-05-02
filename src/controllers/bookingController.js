@@ -3,6 +3,15 @@ const { sequelize } = require('../config/database');
 const { sendPush } = require('../services/pushService');
 const { payerConducteur } = require('./paymentController');
 
+// Calcule le prix d'un segment selon les waypoints du trajet
+const computeSegmentPrice = (ride, departOrdre, arriveeOrdre) => {
+  const wps = ride.waypoints || [];
+  const mainPrix = parseFloat(ride.prix);
+  const prixDepart  = departOrdre  === null ? 0       : (parseFloat(wps.find(w => w.ordre === departOrdre)?.prix)  || 0);
+  const prixArrivee = arriveeOrdre === null ? mainPrix : (parseFloat(wps.find(w => w.ordre === arriveeOrdre)?.prix) || mainPrix);
+  return Math.max(0, prixArrivee - prixDepart);
+};
+
 // POST /api/bookings  — réservation en espèces (cash)
 const creerReservation = async (req, res, next) => {
   try {
@@ -28,6 +37,8 @@ const creerReservation = async (req, res, next) => {
       return res.status(409).json({ success: false, message: 'Vous avez déjà une réservation active sur ce trajet.' });
     }
 
+    const prixSegment = computeSegmentPrice(trajet, waypoint_depart_ordre ?? null, waypoint_arrivee_ordre ?? null);
+
     const reservation = await Booking.create({
       ride_id,
       passager_id:           req.user.id,
@@ -38,6 +49,7 @@ const creerReservation = async (req, res, next) => {
       statut:                'en_attente',
       waypoint_depart_ordre:  waypoint_depart_ordre  ?? null,
       waypoint_arrivee_ordre: waypoint_arrivee_ordre ?? null,
+      prix_segment:           prixSegment,
     });
 
     await trajet.decrement('places', { by: nbPlaces });
@@ -79,7 +91,7 @@ const mesReservations = async (req, res, next) => {
       include: [{
         model: Ride,
         as: 'trajet',
-        attributes: ['id', 'depart_label', 'arrivee_label', 'date_heure', 'prix', 'places', 'statut', 'currency_symbol', 'type_vehicule'],
+        attributes: ['id', 'depart_label', 'arrivee_label', 'date_heure', 'prix', 'places', 'statut', 'currency_symbol', 'type_vehicule', 'waypoints'],
         include: [{ model: User, as: 'conducteur', attributes: ['id', 'nom', 'telephone'] }],
       }],
       order: [['createdAt', 'DESC']],
@@ -95,7 +107,7 @@ const reservationsConducteur = async (req, res, next) => {
         model: Ride,
         as: 'trajet',
         where: { conducteur_id: req.user.id },
-        attributes: ['id', 'depart_label', 'arrivee_label', 'date_heure', 'prix', 'currency_symbol', 'type_vehicule'],
+        attributes: ['id', 'depart_label', 'arrivee_label', 'date_heure', 'prix', 'currency_symbol', 'type_vehicule', 'waypoints'],
       }, {
         model: User,
         as: 'passager',
@@ -316,7 +328,8 @@ const terminerCourse = async (req, res, next) => {
     }
 
     const route     = `${reservation.trajet.depart_label} → ${reservation.trajet.arrivee_label}`;
-    const montant   = parseFloat(reservation.trajet.prix) * (reservation.places_reservees || 1);
+    const prixUnitaire = parseFloat(reservation.prix_segment) || parseFloat(reservation.trajet.prix);
+    const montant   = prixUnitaire * (reservation.places_reservees || 1);
 
     // Marquer la réservation et le trajet comme terminés
     await sequelize.transaction(async (t) => {

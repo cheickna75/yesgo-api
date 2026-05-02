@@ -64,6 +64,11 @@ const Booking = sequelize.define('Booking', {
     allowNull: true,
     comment: 'Ordre du waypoint de descente (null = arrivée principale)',
   },
+  prix_segment: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    comment: 'Prix réel du segment réservé (différent du prix du trajet complet si waypoints)',
+  },
 }, {
   tableName: 'bookings',
   timestamps: true,
