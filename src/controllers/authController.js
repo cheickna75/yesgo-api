@@ -6,7 +6,7 @@ const genererToken = (id) =>
 
 const register = async (req, res, next) => {
   try {
-    const { nom, telephone, mot_de_passe, est_conducteur, type_vehicule, otp } = req.body;
+    const { nom, telephone, mot_de_passe, est_conducteur, type_vehicule, otp, code_parrainage } = req.body;
 
     if (!nom || !telephone || !mot_de_passe) {
       return res.status(400).json({ success: false, message: 'Remplis tous les champs obligatoires.' });
@@ -34,13 +34,28 @@ const register = async (req, res, next) => {
       return res.status(409).json({ success: false, message: 'Ce numéro de téléphone est déjà utilisé.' });
     }
 
+    // Parrainage : chercher le parrain si un code est fourni
+    let parrain = null;
+    if (code_parrainage?.trim()) {
+      parrain = await User.findOne({ where: { code_parrainage: code_parrainage.trim().toUpperCase() } });
+    }
+
     const estConducteur = est_conducteur || false;
     const user = await User.create({
       nom, telephone, mot_de_passe,
       est_conducteur: estConducteur,
       type_vehicule: estConducteur && type_vehicule ? type_vehicule : null,
       numero_paiement: telephone,
+      parraine_par: parrain?.id || null,
     });
+
+    // Donner 3 mois de bonus commission au parrain
+    if (parrain) {
+      const until = new Date();
+      until.setMonth(until.getMonth() + 3);
+      await parrain.update({ commission_bonus_until: until });
+    }
+
     const token = genererToken(user.id);
 
     return res.status(201).json({
@@ -320,4 +335,34 @@ const uploaderPhotoProfil = (req, res, next) => {
   });
 };
 
-module.exports = { register, login, moi, demanderOTPInscription, demanderOTP, resetPassword, changerRole, soumettreDocuments, mettreAJourVehicule, mettreAJourNumeroPaiement, uploaderPhotoProfil };
+// POST /api/auth/partager — enregistre un partage réseau social
+const enregistrerPartage = async (req, res, next) => {
+  try {
+    const { reseau } = req.body;
+    const reseauxValides = ['facebook', 'whatsapp', 'instagram', 'snapchat'];
+    if (!reseauxValides.includes(reseau)) {
+      return res.status(400).json({ success: false, message: 'Réseau invalide.' });
+    }
+
+    const reseaux = Array.isArray(req.user.partages_reseaux) ? [...req.user.partages_reseaux] : [];
+    if (!reseaux.includes(reseau)) reseaux.push(reseau);
+
+    const updates = { partages_reseaux: reseaux };
+
+    // 3 mois de commission gratuite dès 2 partages distincts
+    if (reseaux.length >= 2 && !req.user.commission_bonus_until) {
+      const until = new Date();
+      until.setMonth(until.getMonth() + 3);
+      updates.commission_bonus_until = until;
+    }
+
+    await req.user.update(updates);
+    return res.json({
+      success:     true,
+      partages:    reseaux.length,
+      bonus_actif: !!(req.user.commission_bonus_until || reseaux.length >= 2),
+    });
+  } catch (err) { next(err); }
+};
+
+module.exports = { register, login, moi, demanderOTPInscription, demanderOTP, resetPassword, changerRole, soumettreDocuments, mettreAJourVehicule, mettreAJourNumeroPaiement, uploaderPhotoProfil, enregistrerPartage };

@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const { randomUUID } = require('crypto');
 const { sequelize } = require('../config/database');
 const { Ride, User, Booking } = require('../models');
 
@@ -41,13 +42,50 @@ const isValidPoint = (point) =>
   Math.abs(point.coordinates[0]) <= 180 &&
   Math.abs(point.coordinates[1]) <= 90;
 
+// ── #3 Génère toutes les occurrences d'une série récurrente ──────
+const genererOccurrences = (baseData, jours, firstDate, finDate) => {
+  const occurrences = [];
+  const fin = new Date(finDate);
+  fin.setHours(23, 59, 59, 999);
+
+  const first = new Date(firstDate);
+  const hours = first.getHours();
+  const minutes = first.getMinutes();
+
+  // Cap à 90 jours pour éviter les abus
+  const maxDate = new Date(first);
+  maxDate.setDate(maxDate.getDate() + 90);
+  const endDate = fin < maxDate ? fin : maxDate;
+
+  const now = new Date();
+  const current = new Date(first);
+  current.setHours(0, 0, 0, 0);
+
+  while (current <= endDate) {
+    if (jours.includes(current.getDay())) {
+      const dt = new Date(current);
+      dt.setHours(hours, minutes, 0, 0);
+      if (dt > now) {
+        occurrences.push({ ...baseData, date_heure: dt });
+      }
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  return occurrences;
+};
+
 const createRide = async (req, res, next) => {
   try {
     if (!req.user.est_conducteur) {
       return res.status(403).json({ success: false, message: 'Seuls les conducteurs peuvent proposer un trajet.' });
     }
 
-    const { depart, arrivee, depart_label, arrivee_label, date_heure, prix, places, currency, currency_symbol, type_vehicule } = req.body;
+    const {
+      depart, arrivee, depart_label, arrivee_label, date_heure,
+      prix, places, currency, currency_symbol, type_vehicule,
+      waypoints, est_recurrent, jours_recurrence, recurrence_fin,
+    } = req.body;
 
     if (!isValidPoint(depart) || !isValidPoint(arrivee)) {
       return res.status(400).json({
@@ -57,27 +95,89 @@ const createRide = async (req, res, next) => {
       });
     }
 
-    // Type véhicule : priorité au paramètre envoyé, puis au profil du conducteur, sinon 'moto'
+    // Validation waypoints
+    let waypointsData = [];
+    if (waypoints && Array.isArray(waypoints) && waypoints.length > 0) {
+      if (waypoints.length > 5) {
+        return res.status(400).json({ success: false, message: 'Maximum 5 étapes intermédiaires.' });
+      }
+      for (const wp of waypoints) {
+        if (!wp.label || typeof wp.lat !== 'number' || typeof wp.lng !== 'number') {
+          return res.status(400).json({ success: false, message: 'Chaque étape doit avoir label, lat, lng.' });
+        }
+      }
+      waypointsData = waypoints.map((wp, i) => ({
+        ordre: i + 1, label: wp.label, lat: wp.lat, lng: wp.lng,
+      }));
+    }
+
+    // Validation récurrence
+    if (est_recurrent) {
+      if (!Array.isArray(jours_recurrence) || jours_recurrence.length === 0) {
+        return res.status(400).json({ success: false, message: 'Sélectionne au moins un jour de récurrence.' });
+      }
+      if (!recurrence_fin) {
+        return res.status(400).json({ success: false, message: 'La date de fin de récurrence est requise.' });
+      }
+    }
+
     const vehiculeType = (type_vehicule && ['moto', 'auto'].includes(type_vehicule))
       ? type_vehicule
       : (req.user.type_vehicule || 'moto');
 
-    const ride = await Ride.create({
+    const baseData = {
       depart,
       arrivee,
       depart_label,
       arrivee_label,
-      date_heure,
       prix,
       places,
-      conducteur_id: req.user.id,
+      conducteur_id:   req.user.id,
       currency:        currency        || 'XOF',
       currency_symbol: currency_symbol || 'FCFA',
       type_vehicule:   vehiculeType,
-    });
+      waypoints:       waypointsData,
+    };
 
+    let est_premier_trajet = false;
+    if (!req.user.premier_trajet_publie) {
+      await req.user.update({ premier_trajet_publie: true });
+      est_premier_trajet = true;
+    }
+
+    // ── Trajet récurrent : génère toutes les occurrences ──────────
+    if (est_recurrent) {
+      const serieId = randomUUID();
+      const recData = {
+        ...baseData,
+        date_heure,
+        est_recurrent:     true,
+        jours_recurrence,
+        recurrence_fin,
+        serie_id:          serieId,
+        places_initial:    parseInt(places, 10),
+      };
+
+      const occurrences = genererOccurrences(recData, jours_recurrence, date_heure, recurrence_fin);
+      if (occurrences.length === 0) {
+        return res.status(400).json({ success: false, message: 'Aucune occurrence future dans la plage de dates sélectionnée.' });
+      }
+
+      const rides = await Ride.bulkCreate(occurrences, { individualHooks: true });
+      invalidateCache();
+      return res.status(201).json({
+        success:           true,
+        count:             rides.length,
+        serie_id:          serieId,
+        est_premier_trajet,
+        message:           `${rides.length} trajet(s) récurrent(s) créé(s).`,
+      });
+    }
+
+    // ── Trajet unique ─────────────────────────────────────────────
+    const ride = await Ride.create({ ...baseData, date_heure });
     invalidateCache();
-    return res.status(201).json({ success: true, data: ride });
+    return res.status(201).json({ success: true, data: ride, est_premier_trajet });
   } catch (err) {
     next(err);
   }
@@ -93,6 +193,7 @@ const getRides = async (req, res, next) => {
           r.id, r.depart_label, r.arrivee_label, r.date_heure,
           r.prix, r.places, r.statut, r.conducteur_id,
           r.type_vehicule, r.currency, r.currency_symbol,
+          r.waypoints,
           r."createdAt", r."updatedAt",
           ST_AsGeoJSON(r.depart)::json  AS depart,
           ST_AsGeoJSON(r.arrivee)::json AS arrivee,
@@ -107,7 +208,6 @@ const getRides = async (req, res, next) => {
        JOIN users u ON r.conducteur_id = u.id
        WHERE r.statut NOT IN ('termine', 'annule')
          AND (
-           -- Trajet sans passager accepté : grace period 1h après le départ
            (
              NOT EXISTS (
                SELECT 1 FROM bookings b
@@ -116,7 +216,6 @@ const getRides = async (req, res, next) => {
              AND r.date_heure >= NOW() - INTERVAL '1 hour'
            )
            OR
-           -- Trajet avec passager(s) accepté(s) (conducteur en route) : grace period 2h
            (
              EXISTS (
                SELECT 1 FROM bookings b
@@ -143,6 +242,7 @@ const getRides = async (req, res, next) => {
       type_vehicule:   r.type_vehicule,
       currency:        r.currency,
       currency_symbol: r.currency_symbol,
+      waypoints:       r.waypoints || [],
       conducteur: {
         id:              r.u_id,
         nom:             r.u_nom,
@@ -176,7 +276,7 @@ const searchRides = async (req, res, next) => {
   try {
     const lat   = parseFloat(req.query.lat);
     const lng   = parseFloat(req.query.lng);
-    const rayon = parseFloat(req.query.rayon) || 5; // défaut 5 km
+    const rayon = parseFloat(req.query.rayon) || 5;
 
     if (isNaN(lat) || isNaN(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
       return res.status(400).json({
@@ -190,19 +290,17 @@ const searchRides = async (req, res, next) => {
     }
 
     const rayonMetres = rayon * 1000;
-
-    // Cache : clé = coordonnées arrondies à 2 décimales + rayon
     const cacheKey = `${lat.toFixed(2)}_${lng.toFixed(2)}_${rayon}`;
     const cached = cacheGet(cacheKey);
     if (cached) {
       return res.json({ success: true, count: cached.length, data: cached, cached: true });
     }
 
-    // Requête SQL brute pour éviter les limitations de Sequelize avec PostGIS
     const rows = await sequelize.query(
       `SELECT
           r.id, r.depart_label, r.arrivee_label, r.date_heure,
           r.prix, r.places, r.statut, r.type_vehicule, r.currency, r.currency_symbol,
+          r.waypoints,
           r."createdAt", r."updatedAt",
           ST_AsGeoJSON(r.depart)::json  AS depart,
           ST_AsGeoJSON(r.arrivee)::json AS arrivee,
@@ -218,7 +316,6 @@ const searchRides = async (req, res, next) => {
        WHERE r.statut NOT IN ('termine', 'annule')
          AND ST_DWithin(r.depart::geography, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :rayon)
          AND (
-           -- Trajet sans passager accepté : grace period 1h après le départ
            (
              NOT EXISTS (
                SELECT 1 FROM bookings b
@@ -227,7 +324,6 @@ const searchRides = async (req, res, next) => {
              AND r.date_heure >= NOW() - INTERVAL '1 hour'
            )
            OR
-           -- Trajet avec passager(s) accepté(s) (conducteur en route) : grace period 2h
            (
              EXISTS (
                SELECT 1 FROM bookings b
@@ -253,6 +349,7 @@ const searchRides = async (req, res, next) => {
       type_vehicule: r.type_vehicule,
       currency: r.currency,
       currency_symbol: r.currency_symbol,
+      waypoints: r.waypoints || [],
       conducteur_id: r.conducteur_id,
       conducteur: {
         nom: r.conducteur_nom,

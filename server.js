@@ -27,9 +27,23 @@ const io     = new Server(server, {
 app.set('io', io);
 
 io.on('connection', (socket) => {
-  // Le client s'identifie en envoyant son userId
   socket.on('join', (userId) => {
     if (userId) socket.join(`user-${userId}`);
+  });
+
+  // ── Suivi mutuel conducteur / passager ───────────────────────────
+  socket.on('join_tracking', ({ booking_id }) => {
+    if (booking_id) socket.join(`tracking-${booking_id}`);
+  });
+
+  socket.on('leave_tracking', ({ booking_id }) => {
+    if (booking_id) socket.leave(`tracking-${booking_id}`);
+  });
+
+  // Rebroadcast la position à l'autre participant de la room
+  socket.on('location_update', ({ booking_id, lat, lng, role, heading }) => {
+    if (!booking_id || typeof lat !== 'number' || typeof lng !== 'number') return;
+    socket.to(`tracking-${booking_id}`).emit('partner_location', { lat, lng, role, heading });
   });
 });
 

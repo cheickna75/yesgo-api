@@ -6,7 +6,7 @@ const { payerConducteur } = require('./paymentController');
 // POST /api/bookings  — réservation en espèces (cash)
 const creerReservation = async (req, res, next) => {
   try {
-    const { ride_id, message = '', places_reservees = 1 } = req.body;
+    const { ride_id, message = '', places_reservees = 1, waypoint_depart_ordre = null, waypoint_arrivee_ordre = null } = req.body;
     if (!ride_id) return res.status(400).json({ success: false, message: 'ride_id est requis.' });
 
     const trajet = await Ride.findByPk(ride_id, {
@@ -30,12 +30,14 @@ const creerReservation = async (req, res, next) => {
 
     const reservation = await Booking.create({
       ride_id,
-      passager_id:      req.user.id,
+      passager_id:           req.user.id,
       message,
-      mode_paiement:    'cash',
-      places_reservees: nbPlaces,
-      paiement_confirme: false,
-      statut:           'en_attente',
+      mode_paiement:         'cash',
+      places_reservees:      nbPlaces,
+      paiement_confirme:     false,
+      statut:                'en_attente',
+      waypoint_depart_ordre:  waypoint_depart_ordre  ?? null,
+      waypoint_arrivee_ordre: waypoint_arrivee_ordre ?? null,
     });
 
     await trajet.decrement('places', { by: nbPlaces });
@@ -77,7 +79,7 @@ const mesReservations = async (req, res, next) => {
       include: [{
         model: Ride,
         as: 'trajet',
-        attributes: ['id', 'depart_label', 'arrivee_label', 'date_heure', 'prix', 'places', 'statut', 'currency_symbol'],
+        attributes: ['id', 'depart_label', 'arrivee_label', 'date_heure', 'prix', 'places', 'statut', 'currency_symbol', 'type_vehicule'],
         include: [{ model: User, as: 'conducteur', attributes: ['id', 'nom', 'telephone'] }],
       }],
       order: [['createdAt', 'DESC']],
@@ -93,7 +95,7 @@ const reservationsConducteur = async (req, res, next) => {
         model: Ride,
         as: 'trajet',
         where: { conducteur_id: req.user.id },
-        attributes: ['id', 'depart_label', 'arrivee_label', 'date_heure', 'prix', 'currency_symbol'],
+        attributes: ['id', 'depart_label', 'arrivee_label', 'date_heure', 'prix', 'currency_symbol', 'type_vehicule'],
       }, {
         model: User,
         as: 'passager',

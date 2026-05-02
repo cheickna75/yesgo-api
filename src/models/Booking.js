@@ -52,6 +52,18 @@ const Booking = sequelize.define('Booking', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+
+  // ── #2 Waypoints — segment de trajet réservé ────────────────────
+  waypoint_depart_ordre: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Ordre du waypoint de montée (null = départ principal)',
+  },
+  waypoint_arrivee_ordre: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Ordre du waypoint de descente (null = arrivée principale)',
+  },
 }, {
   tableName: 'bookings',
   timestamps: true,

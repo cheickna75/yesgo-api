@@ -1,0 +1,77 @@
+config:
+  target: "https://web-production-b226e.up.railway.app"
+  http:
+    timeout: 15
+    maxSockets: 50
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+  # ── Paliers progressifs ──────────────────────────────────────────
+  phases:
+    - name: "Palier 1 — Chauffe (10 users)"
+      duration: 30
+      arrivalRate: 10
+
+    - name: "Pause"
+      pause: 5
+
+    - name: "Palier 2 — Normal (30 users)"
+      duration: 30
+      arrivalRate: 30
+
+    - name: "Pause"
+      pause: 5
+
+    - name: "Palier 3 — Soutenu (50 users)"
+      duration: 30
+      arrivalRate: 50
+
+    - name: "Pause"
+      pause: 5
+
+    - name: "Palier 4 — Pic (100 users)"
+      duration: 30
+      arrivalRate: 100
+
+  # Seuils d'alerte — le test échoue si dépassés
+  ensure:
+    p95: 3000       # 95% des requêtes < 3 secondes
+    maxErrorRate: 5 # moins de 5% d'erreurs
+
+scenarios:
+  # ── Scénario 1 : Passager consulte la carte (60% du trafic) ──────
+  - name: "Passager — Consultation carte"
+    weight: 60
+    flow:
+      - get:
+          url: "/api/rides"
+          expect:
+            - statusCode: 200
+            - hasProperty: "data"
+
+  # ── Scénario 2 : Recherche GPS (25% du trafic) ──────────────────
+  - name: "Passager — Recherche GPS"
+    weight: 25
+    flow:
+      - get:
+          url: "/api/rides/search?lat=12.6392&lng=-8.0029&rayon=10"
+          expect:
+            - statusCode: 200
+
+  # ── Scénario 3 : Connexion utilisateur (15% du trafic) ──────────
+  - name: "Utilisateur — Connexion"
+    weight: 15
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            telephone: "+22365076262"
+            mot_de_passe: "test1234"
+          capture:
+            - json: "$.token"
+              as: "token"
+          expect:
+            - statusCode:
+                - 200
+                - 401   # mauvais mdp = normal, pas une erreur serveur
