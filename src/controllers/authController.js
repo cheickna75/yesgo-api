@@ -15,19 +15,22 @@ const register = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Le mot de passe doit contenir au moins 6 caractères.' });
     }
 
-    // Vérification OTP
-    const stored = otpStore.get(`reg_${telephone}`);
-    if (!otp || !stored) {
-      return res.status(400).json({ success: false, message: 'Code de vérification requis. Demande un nouveau code.' });
-    }
-    if (Date.now() > stored.expiresAt) {
+    // Vérification OTP — ignorée si Twilio n'est pas configuré
+    const twilioActif = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER);
+    if (twilioActif) {
+      const stored = otpStore.get(`reg_${telephone}`);
+      if (!otp || !stored) {
+        return res.status(400).json({ success: false, message: 'Code de vérification requis. Demande un nouveau code.' });
+      }
+      if (Date.now() > stored.expiresAt) {
+        otpStore.delete(`reg_${telephone}`);
+        return res.status(400).json({ success: false, message: 'Le code a expiré. Demande un nouveau code.' });
+      }
+      if (stored.code !== String(otp)) {
+        return res.status(400).json({ success: false, message: 'Code incorrect. Vérifie le SMS reçu.' });
+      }
       otpStore.delete(`reg_${telephone}`);
-      return res.status(400).json({ success: false, message: 'Le code a expiré. Demande un nouveau code.' });
     }
-    if (stored.code !== String(otp)) {
-      return res.status(400).json({ success: false, message: 'Code incorrect. Vérifie le SMS reçu.' });
-    }
-    otpStore.delete(`reg_${telephone}`);
 
     const existant = await User.findOne({ where: { telephone } });
     if (existant) {
