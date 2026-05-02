@@ -87,10 +87,10 @@ const User = sequelize.define('User', {
 
   // ── #1 Internationalisation ──────────────────────────────────────
   langue: {
-    type: DataTypes.ENUM('fr', 'en', 'ar'),
+    type: DataTypes.STRING(5),
     defaultValue: 'fr',
     allowNull: false,
-    comment: 'Langue préférée de l\'utilisateur (détectée ou choisie)',
+    comment: 'Langue préférée de l\'utilisateur (fr, en, ar)',
   },
 
   // ── #5 Gamification / Parrainage ────────────────────────────────
