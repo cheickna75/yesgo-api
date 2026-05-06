@@ -806,6 +806,9 @@
   const SERVER_BASE    = window.location.origin;
   const DOC_TYPE_LABEL = { cni: '🪪 CNI', permis: '🚗 Permis' };
 
+  // IDs des conducteurs dont l'admin a ouvert ou téléchargé les documents (session courante)
+  const _docsConsultes = new Set();
+
   function buildRow(c) {
     const docs = Array.isArray(c.document_urls) ? c.document_urls.filter(Boolean) : [];
     const roleBadge = c.est_conducteur
@@ -815,10 +818,15 @@
     let docsHtml;
     if (docs.length > 0) {
       const thumbs = docs.map(f => {
-        const url      = `${SERVER_BASE}${f}`;
-        const type     = f.split('_')[1] || '';
-        const label    = DOC_TYPE_LABEL[type] || 'Doc';
+        // f peut être une URL Cloudinary absolue ou un chemin local relatif
+        const url      = f.startsWith('http') ? f : `${SERVER_BASE}${f}`;
         const filename = f.split('/').pop();
+        const stem     = filename.replace(/\.[^.]+$/, ''); // sans extension
+        const parts    = stem.split('_');
+        // format local : {uuid}_{type}_{timestamp}  → parts[1] = type
+        // format Cloudinary : yesgo/documents/{uuid}_{type}_{timestamp} → idem après split('/')
+        const type     = parts.length >= 2 ? parts[parts.length - 2] : '';
+        const label    = DOC_TYPE_LABEL[type] || 'Doc';
         return `<div style="display:inline-block;text-align:center;margin-right:6px;vertical-align:top">
           <a href="${url}" target="_blank" rel="noopener">
             <img src="${url}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #ddd;display:block"
@@ -839,11 +847,11 @@
         ${thumbs}
         <div class="d-flex flex-column gap-1 ms-1">
           <button class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size:.7rem"
-            onclick="voirDocumentsEnc('${nomEnc}','${docsEnc}')" title="Voir en grand">
+            onclick="voirDocumentsEnc('${c.id}','${nomEnc}','${docsEnc}')" title="Voir en grand">
             <i class="bi bi-fullscreen"></i>
           </button>
           <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.7rem"
-            onclick="telechargerDocsUser('${docsEnc}')" title="Tout télécharger">
+            onclick="telechargerDocsUser('${c.id}','${docsEnc}')" title="Tout télécharger">
             <i class="bi bi-download"></i>
           </button>
         </div>
@@ -877,12 +885,19 @@
       </td>
       <td>
         <div class="d-flex gap-1 flex-wrap">
-          ${hasFiles ? `
-          <button class="btn btn-sm ${c.is_verifie ? 'btn-outline-danger' : 'btn-outline-success'} py-0 px-2"
-            onclick="toggleVerif('${c.id}', ${c.is_verifie}, '${nomSafe}')">
-            ${c.is_verifie
-              ? '<i class="bi bi-x-circle me-1"></i>Retirer vérif.'
-              : '<i class="bi bi-patch-check me-1"></i>Vérifier'}
+          ${hasFiles && !c.is_verifie ? (() => {
+            const consulte = _docsConsultes.has(c.id);
+            return `<button id="verif-btn-${c.id}"
+              class="btn btn-sm btn-outline-success py-0 px-2"
+              ${consulte ? '' : 'disabled title="Ouvrez ou téléchargez d\'abord les documents"'}
+              onclick="toggleVerif('${c.id}', false, '${nomSafe}')">
+              <i class="bi bi-patch-check me-1"></i>Vérifier
+            </button>`;
+          })() : ''}
+          ${hasFiles && c.is_verifie ? `
+          <button class="btn btn-sm btn-outline-danger py-0 px-2"
+            onclick="toggleVerif('${c.id}', true, '${nomSafe}')">
+            <i class="bi bi-x-circle me-1"></i>Retirer vérif.
           </button>` : ''}
           ${c.documents_soumis && !hasFiles ? `
           <button class="btn btn-sm btn-outline-warning py-0 px-2" title="Réinitialiser — permet à l'utilisateur de resoumettre"
@@ -896,16 +911,28 @@
     </tr>`;
   }
 
-  function voirDocumentsEnc(nomEnc, docsEnc) {
+  function marquerDocumentsConsultes(userId) {
+    _docsConsultes.add(userId);
+    const btn = document.getElementById(`verif-btn-${userId}`);
+    if (btn) {
+      btn.disabled = false;
+      btn.removeAttribute('title');
+    }
+  }
+
+  function voirDocumentsEnc(userId, nomEnc, docsEnc) {
+    marquerDocumentsConsultes(userId);
     voirDocuments(decodeURIComponent(nomEnc), JSON.parse(decodeURIComponent(docsEnc)));
   }
 
-  function telechargerDocsUser(docsEnc) {
+  function telechargerDocsUser(userId, docsEnc) {
+    marquerDocumentsConsultes(userId);
     const docs = JSON.parse(decodeURIComponent(docsEnc));
     docs.forEach((f, i) => {
       setTimeout(() => {
+        const url = f.startsWith('http') ? f : `${SERVER_BASE}${f}`;
         const a = document.createElement('a');
-        a.href = `${SERVER_BASE}${f}`;
+        a.href = url;
         a.download = f.split('/').pop();
         document.body.appendChild(a);
         a.click();
@@ -936,8 +963,10 @@
     const container = document.getElementById('modalDocsContent');
     const fullLabel = { cni: '🪪 Pièce d\'identité', permis: '🚗 Permis de conduire' };
     container.innerHTML = filenames.map(f => {
-      const url   = `${SERVER_BASE}${f}`;
-      const type  = f.split('_')[1] || '';
+      const url   = f.startsWith('http') ? f : `${SERVER_BASE}${f}`;
+      const stem  = f.split('/').pop().replace(/\.[^.]+$/, '');
+      const parts = stem.split('_');
+      const type  = parts.length >= 2 ? parts[parts.length - 2] : '';
       const label = fullLabel[type] || 'Document';
       return `<div class="text-center mb-4">
         <p class="fw-700 mb-2">${label}</p>
