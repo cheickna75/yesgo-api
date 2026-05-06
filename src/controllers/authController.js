@@ -15,22 +15,19 @@ const register = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Le mot de passe doit contenir au moins 6 caractères.' });
     }
 
-    // Vérification OTP — ignorée si Twilio n'est pas configuré
-    const twilioActif = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER);
-    if (twilioActif) {
-      const stored = otpStore.get(`reg_${telephone}`);
-      if (!otp || !stored) {
-        return res.status(400).json({ success: false, message: 'Code de vérification requis. Demande un nouveau code.' });
-      }
-      if (Date.now() > stored.expiresAt) {
-        otpStore.delete(`reg_${telephone}`);
-        return res.status(400).json({ success: false, message: 'Le code a expiré. Demande un nouveau code.' });
-      }
-      if (stored.code !== String(otp)) {
-        return res.status(400).json({ success: false, message: 'Code incorrect. Vérifie le SMS reçu.' });
-      }
-      otpStore.delete(`reg_${telephone}`);
+    // Vérification OTP — toujours obligatoire (SMS si Twilio configuré, sinon logs Railway)
+    const stored = otpStore.get(`reg_${telephone}`);
+    if (!otp || !stored) {
+      return res.status(400).json({ success: false, message: 'Code de vérification requis. Demande un nouveau code.' });
     }
+    if (Date.now() > stored.expiresAt) {
+      otpStore.delete(`reg_${telephone}`);
+      return res.status(400).json({ success: false, message: 'Le code a expiré. Demande un nouveau code.' });
+    }
+    if (stored.code !== String(otp)) {
+      return res.status(400).json({ success: false, message: 'Code incorrect. Vérifie le SMS reçu.' });
+    }
+    otpStore.delete(`reg_${telephone}`);
 
     const existant = await User.findOne({ where: { telephone } });
     if (existant) {
@@ -228,13 +225,27 @@ const changerRole = async (req, res, next) => {
 };
 
 // POST /api/auth/soumettre-documents  (multipart/form-data)
-const multer = require('multer');
-const path   = require('path');
+const multer     = require('multer');
+const path       = require('path');
+const cloudinary = require('cloudinary').v2;
+
+const _cloudinaryActif = !!(
+  process.env.CLOUDINARY_CLOUD_NAME &&
+  process.env.CLOUDINARY_API_KEY &&
+  process.env.CLOUDINARY_API_SECRET
+);
+
+if (_cloudinaryActif) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key:    process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+}
 
 const _storage = multer.diskStorage({
   destination: path.join(__dirname, '../../uploads/documents'),
   filename: (req, file, cb) => {
-    // ex: <userId>_cni_1714000000000.jpg  — extension préservée pour affichage navigateur
     const ext  = path.extname(file.originalname).toLowerCase() || '.jpg';
     const type = path.basename(file.originalname, path.extname(file.originalname)) || 'doc';
     cb(null, `${req.user.id}_${type}_${Date.now()}${ext}`);
@@ -255,32 +266,52 @@ const soumettreDocuments = (req, res, next) => {
     }
 
     try {
-      const filenames = files.map(f => `/uploads/documents/${f.filename}`);
-      console.log('[upload] sauvegardés:', filenames);
-      await req.user.update({ documents_soumis: true, is_verifie: false, document_urls: filenames });
-      return res.json({ success: true, message: 'Documents soumis. En attente de vérification.', files: filenames });
+      let urls;
+
+      if (_cloudinaryActif) {
+        // Upload vers Cloudinary (persistant sur Railway)
+        const uploads = await Promise.all(files.map(f =>
+          cloudinary.uploader.upload(f.path, {
+            folder:    'yesgo/documents',
+            public_id: path.basename(f.filename, path.extname(f.filename)),
+            resource_type: 'image',
+          })
+        ));
+        urls = uploads.map(r => r.secure_url);
+        console.log('[upload] Cloudinary ✅', urls);
+      } else {
+        // Stockage local (dev uniquement — ephémère sur Railway)
+        const appUrl = process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`;
+        urls = files.map(f => `${appUrl}/uploads/documents/${f.filename}`);
+        console.log('[upload] local ⚠️', urls);
+      }
+
+      await req.user.update({ documents_soumis: true, is_verifie: false, document_urls: urls });
+      return res.json({ success: true, message: 'Documents soumis. En attente de vérification.', files: urls });
     } catch (e) { next(e); }
   });
 };
 
 const mettreAJourVehicule = async (req, res, next) => {
   try {
-    const { type_vehicule, marque_vehicule, modele_vehicule } = req.body;
+    const { type_vehicule, marque_vehicule, modele_vehicule, numero_immatriculation } = req.body;
     if (!type_vehicule || !['moto', 'auto'].includes(type_vehicule)) {
       return res.status(400).json({ success: false, message: 'type_vehicule doit être "moto" ou "auto".' });
     }
     await req.user.update({
       type_vehicule,
-      marque_vehicule: marque_vehicule?.trim() || null,
-      modele_vehicule: modele_vehicule?.trim() || null,
+      marque_vehicule:        marque_vehicule?.trim()        || null,
+      modele_vehicule:        modele_vehicule?.trim()        || null,
+      numero_immatriculation: numero_immatriculation?.trim() || null,
     });
     return res.json({
       success: true,
       message: 'Véhicule mis à jour.',
       data: {
-        type_vehicule:   req.user.type_vehicule,
-        marque_vehicule: req.user.marque_vehicule,
-        modele_vehicule: req.user.modele_vehicule,
+        type_vehicule:          req.user.type_vehicule,
+        marque_vehicule:        req.user.marque_vehicule,
+        modele_vehicule:        req.user.modele_vehicule,
+        numero_immatriculation: req.user.numero_immatriculation,
       },
     });
   } catch (err) { next(err); }
@@ -352,8 +383,13 @@ const enregistrerPartage = async (req, res, next) => {
 
     const updates = { partages_reseaux: reseaux };
 
-    // 3 mois de commission gratuite dès 2 partages distincts
-    if (reseaux.length >= 2 && !req.user.commission_bonus_until) {
+    // 3 mois sans commission — uniquement si conducteur ET partage avant le 1er trajet publié
+    if (
+      reseaux.length >= 2 &&
+      !req.user.commission_bonus_until &&
+      req.user.est_conducteur &&
+      !req.user.premier_trajet_publie
+    ) {
       const until = new Date();
       until.setMonth(until.getMonth() + 3);
       updates.commission_bonus_until = until;
@@ -363,7 +399,7 @@ const enregistrerPartage = async (req, res, next) => {
     return res.json({
       success:     true,
       partages:    reseaux.length,
-      bonus_actif: !!(req.user.commission_bonus_until || reseaux.length >= 2),
+      bonus_actif: !!(updates.commission_bonus_until || req.user.commission_bonus_until),
     });
   } catch (err) { next(err); }
 };
