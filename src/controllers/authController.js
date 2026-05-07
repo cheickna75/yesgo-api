@@ -124,15 +124,22 @@ const envoyerOTPSMS = async (telephone, code) => {
   const token = process.env.TWILIO_AUTH_TOKEN;
   const from  = process.env.TWILIO_PHONE_NUMBER;
   if (sid && token && from) {
+    console.log(`[OTP] Envoi Twilio → ${telephone}`);
     const twilio = require('twilio')(sid, token);
-    await twilio.messages.create({
-      body: `Ton code YesGo : ${code}. Valable 10 minutes. Ne le partage pas.`,
-      from,
-      to: telephone,
-    });
+    try {
+      const msg = await twilio.messages.create({
+        body: `Ton code YesGo : ${code}. Valable 10 minutes. Ne le partage pas.`,
+        from,
+        to: telephone,
+      });
+      console.log(`[OTP] SMS envoyé ✅ sid=${msg.sid} status=${msg.status}`);
+    } catch (twilioErr) {
+      console.error(`[OTP] Twilio erreur ❌ code=${twilioErr.code} message=${twilioErr.message}`);
+      throw twilioErr;
+    }
   } else {
-    // Mode développement : afficher dans les logs Railway
-    console.log(`[OTP] ${telephone} → ${code}`);
+    // Twilio non configuré : afficher dans les logs Railway
+    console.log(`[OTP] ⚠️ Twilio non configuré — code pour ${telephone} : ${code}`);
   }
 };
 
