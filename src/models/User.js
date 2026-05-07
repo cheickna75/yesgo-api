@@ -49,7 +49,7 @@ const User = sequelize.define('User', {
   },
   is_verifie: {
     type: DataTypes.BOOLEAN,
-    defaultValue: true,
+    defaultValue: false,
   },
   document_urls: {
     type: DataTypes.JSON,
