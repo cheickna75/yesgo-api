@@ -12,9 +12,15 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING(100),
     allowNull: false,
   },
+  email: {
+    type: DataTypes.STRING(200),
+    allowNull: true,
+    unique: true,
+    validate: { isEmail: true },
+  },
   telephone: {
     type: DataTypes.STRING(20),
-    allowNull: false,
+    allowNull: true,
     unique: true,
     validate: { is: /^\+?[0-9]{8,15}$/ },
   },

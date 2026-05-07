@@ -31,6 +31,16 @@ const connectDB = async () => {
 
   // ── Migrations manuelles idempotentes (syntaxe PostgreSQL valide) ─
   const migrations = [
+    // Colonne email (authentification par email)
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(200)`,
+    `DO $$ BEGIN
+       IF NOT EXISTS (
+         SELECT 1 FROM pg_constraint
+         WHERE conrelid = 'users'::regclass AND conname = 'users_email_key'
+       ) THEN
+         ALTER TABLE users ADD CONSTRAINT users_email_key UNIQUE (email);
+       END IF;
+     END $$`,
     // Contrainte UNIQUE sur code_parrainage — Sequelize génère du SQL invalide pour ça
     `DO $$ BEGIN
        IF NOT EXISTS (

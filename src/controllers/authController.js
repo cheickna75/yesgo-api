@@ -6,31 +6,28 @@ const genererToken = (id) =>
 
 const register = async (req, res, next) => {
   try {
-    const { nom, telephone, mot_de_passe, est_conducteur, type_vehicule, otp, code_parrainage } = req.body;
+    const { nom, email, mot_de_passe, est_conducteur, type_vehicule, otp, code_parrainage } = req.body;
 
-    if (!nom || !telephone || !mot_de_passe) {
+    if (!nom || !email || !mot_de_passe) {
       return res.status(400).json({ success: false, message: 'Remplis tous les champs obligatoires.' });
     }
     if (mot_de_passe.length < 6) {
       return res.status(400).json({ success: false, message: 'Le mot de passe doit contenir au moins 6 caractères.' });
     }
-
-    // Vérification OTP via Twilio Verify (ou store local en dev)
     if (!otp) {
-      return res.status(400).json({ success: false, message: 'Code de vérification requis. Demande un nouveau code.' });
+      return res.status(400).json({ success: false, message: 'Code de vérification requis.' });
     }
     try {
-      await verifierOTP(telephone, otp);
+      await verifierOTP(email.toLowerCase(), otp);
     } catch (otpErr) {
       return res.status(400).json({ success: false, message: otpErr.message });
     }
 
-    const existant = await User.findOne({ where: { telephone } });
+    const existant = await User.findOne({ where: { email: email.toLowerCase() } });
     if (existant) {
-      return res.status(409).json({ success: false, message: 'Ce numéro de téléphone est déjà utilisé.' });
+      return res.status(409).json({ success: false, message: 'Cet email est déjà utilisé.' });
     }
 
-    // Parrainage : chercher le parrain si un code est fourni
     let parrain = null;
     if (code_parrainage?.trim()) {
       parrain = await User.findOne({ where: { code_parrainage: code_parrainage.trim().toUpperCase() } });
@@ -38,14 +35,14 @@ const register = async (req, res, next) => {
 
     const estConducteur = est_conducteur || false;
     const user = await User.create({
-      nom, telephone, mot_de_passe,
+      nom,
+      email: email.toLowerCase(),
+      mot_de_passe,
       est_conducteur: estConducteur,
       type_vehicule: estConducteur && type_vehicule ? type_vehicule : null,
-      numero_paiement: telephone,
       parraine_par: parrain?.id || null,
     });
 
-    // Donner 3 mois de bonus commission au parrain
     if (parrain) {
       const until = new Date();
       until.setMonth(until.getMonth() + 3);
@@ -53,17 +50,16 @@ const register = async (req, res, next) => {
     }
 
     const token = genererToken(user.id);
-
     return res.status(201).json({
       success: true,
       token,
       data: {
-        id: user.id, nom: user.nom, telephone: user.telephone,
+        id: user.id, nom: user.nom, email: user.email,
         est_conducteur: user.est_conducteur,
         type_vehicule: user.type_vehicule || null,
         documents_soumis: false, is_verifie: false, solde: 0,
         marque_vehicule: null, modele_vehicule: null,
-        numero_paiement: telephone,
+        numero_paiement: user.numero_paiement || null,
       },
     });
   } catch (err) {
@@ -73,25 +69,23 @@ const register = async (req, res, next) => {
 
 const login = async (req, res, next) => {
   try {
-    const { telephone, mot_de_passe } = req.body;
+    const { email, mot_de_passe } = req.body;
 
-    if (!telephone || !mot_de_passe) {
-      return res.status(400).json({ success: false, message: 'telephone et mot_de_passe sont requis.' });
+    if (!email || !mot_de_passe) {
+      return res.status(400).json({ success: false, message: 'Email et mot de passe requis.' });
     }
 
-    // scope withPassword pour inclure le champ hash exclu par défaut
-    const user = await User.scope('withPassword').findOne({ where: { telephone } });
+    const user = await User.scope('withPassword').findOne({ where: { email: email.toLowerCase() } });
     if (!user || !(await user.verifierMotDePasse(mot_de_passe))) {
-      return res.status(401).json({ success: false, message: 'Numéro ou mot de passe incorrect.' });
+      return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect.' });
     }
 
     const token = genererToken(user.id);
-
     return res.json({
       success: true,
       token,
       data: {
-        id: user.id, nom: user.nom, telephone: user.telephone,
+        id: user.id, nom: user.nom, email: user.email, telephone: user.telephone,
         est_conducteur: user.est_conducteur, est_admin: user.est_admin,
         documents_soumis: user.documents_soumis, is_verifie: user.is_verifie,
         solde: parseFloat(user.solde || 0),
@@ -111,69 +105,82 @@ const moi = async (req, res) => {
   res.json({ success: true, data: req.user });
 };
 
-// OTP store en mémoire — utilisé uniquement si Twilio Verify n'est pas configuré
+// OTP store en mémoire : email → { code, expiresAt }
 const otpStore = new Map();
 
-const _twilioActif = () =>
-  !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_VERIFY_SERVICE_SID);
+// Envoie le code OTP par email (Nodemailer SMTP ou Resend, sinon console)
+const envoyerEmailOTP = async (email, code) => {
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:420px;margin:0 auto;padding:24px">
+      <h2 style="color:#FF6B35;margin-bottom:8px">YesGo</h2>
+      <p style="color:#333;margin-bottom:16px">Voici ton code de vérification :</p>
+      <div style="font-size:48px;font-weight:800;letter-spacing:12px;color:#1a1a1a;text-align:center;
+                  padding:20px;background:#f5f5f5;border-radius:12px;margin-bottom:16px">${code}</div>
+      <p style="color:#666;font-size:13px">Valable 10 minutes. Ne le partage jamais.</p>
+    </div>`;
 
-const _twilioClient = () =>
-  require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+  if (process.env.RESEND_API_KEY) {
+    const { Resend } = require('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const { error } = await resend.emails.send({
+      from: process.env.FROM_EMAIL || 'YesGo <noreply@yesgo.app>',
+      to: email,
+      subject: `${code} — ton code YesGo`,
+      html,
+    });
+    if (error) { console.error('[OTP Email] Resend erreur:', error); throw new Error(error.message); }
+    console.log(`[OTP Email] Resend ✅ → ${email}`);
 
-// Envoie un OTP via Twilio Verify (pas besoin d'acheter un numéro)
-const envoyerOTP = async (telephone) => {
-  if (_twilioActif()) {
-    console.log(`[OTP] Twilio Verify → ${telephone}`);
-    try {
-      const verification = await _twilioClient()
-        .verify.v2.services(process.env.TWILIO_VERIFY_SERVICE_SID)
-        .verifications.create({ to: telephone, channel: 'sms' });
-      console.log(`[OTP] Verify envoyé ✅ status=${verification.status}`);
-    } catch (err) {
-      console.error(`[OTP] Twilio Verify erreur ❌ ${err.code} — ${err.message}`);
-      throw err;
-    }
+  } else if (process.env.SMTP_HOST) {
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    });
+    await transporter.sendMail({
+      from: process.env.FROM_EMAIL || process.env.SMTP_USER,
+      to: email,
+      subject: `${code} — ton code YesGo`,
+      html,
+    });
+    console.log(`[OTP Email] SMTP ✅ → ${email}`);
+
   } else {
-    // Mode développement : générer localement et logger
-    const code = String(Math.floor(100000 + Math.random() * 900000));
-    otpStore.set(telephone, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
-    console.log(`[OTP] ⚠️ Twilio non configuré — code pour ${telephone} : ${code}`);
+    console.log(`[OTP Email] ⚠️ Non configuré — code pour ${email} : ${code}`);
   }
 };
 
-// Vérifie un OTP — via Twilio Verify ou le store local
-const verifierOTP = async (telephone, code) => {
-  if (_twilioActif()) {
-    const check = await _twilioClient()
-      .verify.v2.services(process.env.TWILIO_VERIFY_SERVICE_SID)
-      .verificationChecks.create({ to: telephone, code: String(code) });
-    if (check.status !== 'approved') {
-      throw Object.assign(new Error('Code incorrect ou expiré.'), { status: 400 });
-    }
-  } else {
-    const stored = otpStore.get(telephone);
-    if (!stored) throw Object.assign(new Error('Code de vérification requis. Demande un nouveau code.'), { status: 400 });
-    if (Date.now() > stored.expiresAt) {
-      otpStore.delete(telephone);
-      throw Object.assign(new Error('Le code a expiré. Demande un nouveau code.'), { status: 400 });
-    }
-    if (stored.code !== String(code)) throw Object.assign(new Error('Code incorrect.'), { status: 400 });
-    otpStore.delete(telephone);
+const envoyerOTP = async (email) => {
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  otpStore.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
+  await envoyerEmailOTP(email, code);
+};
+
+const verifierOTP = async (email, code) => {
+  const stored = otpStore.get(email);
+  if (!stored) throw Object.assign(new Error('Code requis. Demande un nouveau code.'), { status: 400 });
+  if (Date.now() > stored.expiresAt) {
+    otpStore.delete(email);
+    throw Object.assign(new Error('Le code a expiré. Demande un nouveau code.'), { status: 400 });
   }
+  if (stored.code !== String(code)) throw Object.assign(new Error('Code incorrect.'), { status: 400 });
+  otpStore.delete(email);
 };
 
 const demanderOTPInscription = async (req, res, next) => {
   try {
-    const { telephone } = req.body;
-    if (!telephone) {
-      return res.status(400).json({ success: false, message: 'Numéro de téléphone requis.' });
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email requis.' });
     }
-    const existant = await User.findOne({ where: { telephone } });
+    const existant = await User.findOne({ where: { email: email.toLowerCase() } });
     if (existant) {
-      return res.status(409).json({ success: false, message: 'Ce numéro est déjà associé à un compte.' });
+      return res.status(409).json({ success: false, message: 'Cet email est déjà associé à un compte.' });
     }
-    await envoyerOTP(telephone);
-    return res.json({ success: true, message: 'Code de vérification envoyé par SMS.' });
+    await envoyerOTP(email.toLowerCase());
+    return res.json({ success: true, message: 'Code de vérification envoyé par email.' });
   } catch (err) {
     next(err);
   }
@@ -181,16 +188,16 @@ const demanderOTPInscription = async (req, res, next) => {
 
 const demanderOTP = async (req, res, next) => {
   try {
-    const { telephone } = req.body;
-    if (!telephone) {
-      return res.status(400).json({ success: false, message: 'Numéro de téléphone requis.' });
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email requis.' });
     }
-    const user = await User.findOne({ where: { telephone } });
+    const user = await User.findOne({ where: { email: email.toLowerCase() } });
     if (!user) {
-      return res.status(404).json({ success: false, message: 'Aucun compte avec ce numéro.' });
+      return res.status(404).json({ success: false, message: 'Aucun compte avec cet email.' });
     }
-    await envoyerOTP(telephone);
-    return res.json({ success: true, message: 'Code envoyé par SMS.' });
+    await envoyerOTP(email.toLowerCase());
+    return res.json({ success: true, message: 'Code envoyé par email.' });
   } catch (err) {
     next(err);
   }
@@ -198,21 +205,21 @@ const demanderOTP = async (req, res, next) => {
 
 const resetPassword = async (req, res, next) => {
   try {
-    const { telephone, otp, nouveau_mot_de_passe } = req.body;
-    if (!telephone || !otp || !nouveau_mot_de_passe) {
-      return res.status(400).json({ success: false, message: 'Remplis tous les champs pour réinitialiser ton mot de passe.' });
+    const { email, otp, nouveau_mot_de_passe } = req.body;
+    if (!email || !otp || !nouveau_mot_de_passe) {
+      return res.status(400).json({ success: false, message: 'Remplis tous les champs.' });
     }
     if (nouveau_mot_de_passe.length < 6) {
       return res.status(400).json({ success: false, message: 'Le mot de passe doit contenir au moins 6 caractères.' });
     }
     try {
-      await verifierOTP(telephone, otp);
+      await verifierOTP(email.toLowerCase(), otp);
     } catch (otpErr) {
       return res.status(400).json({ success: false, message: otpErr.message });
     }
-    const user = await User.scope('withPassword').findOne({ where: { telephone } });
+    const user = await User.scope('withPassword').findOne({ where: { email: email.toLowerCase() } });
     if (!user) {
-      return res.status(404).json({ success: false, message: 'Aucun compte avec ce numéro.' });
+      return res.status(404).json({ success: false, message: 'Aucun compte avec cet email.' });
     }
     user.mot_de_passe = nouveau_mot_de_passe;
     await user.save();
