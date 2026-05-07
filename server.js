@@ -19,6 +19,7 @@ const routes = require('./src/routes/index');
 const errorHandler = require('./src/middleware/errorHandler');
 
 const app    = express();
+app.set('trust proxy', 1); // Railway est derrière un proxy — nécessaire pour express-rate-limit
 const server = http.createServer(app);
 const io     = new Server(server, {
   cors: { origin: true, methods: ['GET', 'POST'], credentials: true },
