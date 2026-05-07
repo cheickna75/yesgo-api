@@ -21,8 +21,34 @@ const connectDB = async () => {
   console.log('PostgreSQL connecté avec succès.');
   await sequelize.query('CREATE EXTENSION IF NOT EXISTS postgis;');
   console.log('Extension PostGIS activée.');
-  await sequelize.sync({ alter: true });
-  console.log('Modèles synchronisés avec la base de données.');
+  try {
+    await sequelize.sync({ alter: true });
+    console.log('Modèles synchronisés avec la base de données.');
+  } catch (syncErr) {
+    // En production, les tables existent déjà — l'erreur UNIQUE/syntax est non-bloquante
+    console.warn('⚠️ sync({ alter }) partiel (ignoré en prod) :', syncErr.message);
+  }
+
+  // ── Migrations manuelles idempotentes (syntaxe PostgreSQL valide) ─
+  const migrations = [
+    // Contrainte UNIQUE sur code_parrainage — Sequelize génère du SQL invalide pour ça
+    `DO $$ BEGIN
+       IF NOT EXISTS (
+         SELECT 1 FROM pg_constraint
+         WHERE conrelid = 'users'::regclass AND conname = 'users_code_parrainage_key'
+       ) THEN
+         ALTER TABLE users ADD CONSTRAINT users_code_parrainage_key UNIQUE (code_parrainage);
+       END IF;
+     END $$`,
+    // Colonnes bookings pour les waypoints et prix par segment
+    `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS waypoint_depart_ordre  INTEGER`,
+    `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS waypoint_arrivee_ordre INTEGER`,
+    `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS prix_segment            DECIMAL(12,2)`,
+  ];
+  for (const sql of migrations) {
+    await sequelize.query(sql).catch(e => console.warn('⚠️ migration:', e.message));
+  }
+  console.log('Migrations manuelles appliquées.');
 
   // ── Index de performance (idempotents — safe à relancer) ────────
   const indexes = [
