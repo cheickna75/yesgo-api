@@ -15,19 +15,15 @@ const register = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Le mot de passe doit contenir au moins 6 caractères.' });
     }
 
-    // Vérification OTP — toujours obligatoire (SMS si Twilio configuré, sinon logs Railway)
-    const stored = otpStore.get(`reg_${telephone}`);
-    if (!otp || !stored) {
+    // Vérification OTP via Twilio Verify (ou store local en dev)
+    if (!otp) {
       return res.status(400).json({ success: false, message: 'Code de vérification requis. Demande un nouveau code.' });
     }
-    if (Date.now() > stored.expiresAt) {
-      otpStore.delete(`reg_${telephone}`);
-      return res.status(400).json({ success: false, message: 'Le code a expiré. Demande un nouveau code.' });
+    try {
+      await verifierOTP(telephone, otp);
+    } catch (otpErr) {
+      return res.status(400).json({ success: false, message: otpErr.message });
     }
-    if (stored.code !== String(otp)) {
-      return res.status(400).json({ success: false, message: 'Code incorrect. Vérifie le SMS reçu.' });
-    }
-    otpStore.delete(`reg_${telephone}`);
 
     const existant = await User.findOne({ where: { telephone } });
     if (existant) {
@@ -115,31 +111,54 @@ const moi = async (req, res) => {
   res.json({ success: true, data: req.user });
 };
 
-// OTP store en mémoire : telephone → { code, expiresAt }
+// OTP store en mémoire — utilisé uniquement si Twilio Verify n'est pas configuré
 const otpStore = new Map();
 
-// Envoie l'OTP par SMS (Twilio si configuré, sinon console)
-const envoyerOTPSMS = async (telephone, code) => {
-  const sid   = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  const from  = process.env.TWILIO_PHONE_NUMBER;
-  if (sid && token && from) {
-    console.log(`[OTP] Envoi Twilio → ${telephone}`);
-    const twilio = require('twilio')(sid, token);
+const _twilioActif = () =>
+  !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_VERIFY_SERVICE_SID);
+
+const _twilioClient = () =>
+  require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+
+// Envoie un OTP via Twilio Verify (pas besoin d'acheter un numéro)
+const envoyerOTP = async (telephone) => {
+  if (_twilioActif()) {
+    console.log(`[OTP] Twilio Verify → ${telephone}`);
     try {
-      const msg = await twilio.messages.create({
-        body: `Ton code YesGo : ${code}. Valable 10 minutes. Ne le partage pas.`,
-        from,
-        to: telephone,
-      });
-      console.log(`[OTP] SMS envoyé ✅ sid=${msg.sid} status=${msg.status}`);
-    } catch (twilioErr) {
-      console.error(`[OTP] Twilio erreur ❌ code=${twilioErr.code} message=${twilioErr.message}`);
-      throw twilioErr;
+      const verification = await _twilioClient()
+        .verify.v2.services(process.env.TWILIO_VERIFY_SERVICE_SID)
+        .verifications.create({ to: telephone, channel: 'sms' });
+      console.log(`[OTP] Verify envoyé ✅ status=${verification.status}`);
+    } catch (err) {
+      console.error(`[OTP] Twilio Verify erreur ❌ ${err.code} — ${err.message}`);
+      throw err;
     }
   } else {
-    // Twilio non configuré : afficher dans les logs Railway
+    // Mode développement : générer localement et logger
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    otpStore.set(telephone, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
     console.log(`[OTP] ⚠️ Twilio non configuré — code pour ${telephone} : ${code}`);
+  }
+};
+
+// Vérifie un OTP — via Twilio Verify ou le store local
+const verifierOTP = async (telephone, code) => {
+  if (_twilioActif()) {
+    const check = await _twilioClient()
+      .verify.v2.services(process.env.TWILIO_VERIFY_SERVICE_SID)
+      .verificationChecks.create({ to: telephone, code: String(code) });
+    if (check.status !== 'approved') {
+      throw Object.assign(new Error('Code incorrect ou expiré.'), { status: 400 });
+    }
+  } else {
+    const stored = otpStore.get(telephone);
+    if (!stored) throw Object.assign(new Error('Code de vérification requis. Demande un nouveau code.'), { status: 400 });
+    if (Date.now() > stored.expiresAt) {
+      otpStore.delete(telephone);
+      throw Object.assign(new Error('Le code a expiré. Demande un nouveau code.'), { status: 400 });
+    }
+    if (stored.code !== String(code)) throw Object.assign(new Error('Code incorrect.'), { status: 400 });
+    otpStore.delete(telephone);
   }
 };
 
@@ -153,9 +172,7 @@ const demanderOTPInscription = async (req, res, next) => {
     if (existant) {
       return res.status(409).json({ success: false, message: 'Ce numéro est déjà associé à un compte.' });
     }
-    const code = String(Math.floor(100000 + Math.random() * 900000));
-    otpStore.set(`reg_${telephone}`, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
-    await envoyerOTPSMS(telephone, code);
+    await envoyerOTP(telephone);
     return res.json({ success: true, message: 'Code de vérification envoyé par SMS.' });
   } catch (err) {
     next(err);
@@ -172,9 +189,7 @@ const demanderOTP = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({ success: false, message: 'Aucun compte avec ce numéro.' });
     }
-    const code = String(Math.floor(100000 + Math.random() * 900000));
-    otpStore.set(telephone, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
-    await envoyerOTPSMS(telephone, code);
+    await envoyerOTP(telephone);
     return res.json({ success: true, message: 'Code envoyé par SMS.' });
   } catch (err) {
     next(err);
@@ -190,18 +205,11 @@ const resetPassword = async (req, res, next) => {
     if (nouveau_mot_de_passe.length < 6) {
       return res.status(400).json({ success: false, message: 'Le mot de passe doit contenir au moins 6 caractères.' });
     }
-    const stored = otpStore.get(telephone);
-    if (!stored) {
-      return res.status(400).json({ success: false, message: 'Aucun code en attente. Demande un nouveau code.' });
+    try {
+      await verifierOTP(telephone, otp);
+    } catch (otpErr) {
+      return res.status(400).json({ success: false, message: otpErr.message });
     }
-    if (Date.now() > stored.expiresAt) {
-      otpStore.delete(telephone);
-      return res.status(400).json({ success: false, message: 'Le code a expiré. Demande un nouveau code.' });
-    }
-    if (stored.code !== String(otp)) {
-      return res.status(400).json({ success: false, message: 'Code incorrect. Vérifie la notification reçue.' });
-    }
-    otpStore.delete(telephone);
     const user = await User.scope('withPassword').findOne({ where: { telephone } });
     if (!user) {
       return res.status(404).json({ success: false, message: 'Aucun compte avec ce numéro.' });
