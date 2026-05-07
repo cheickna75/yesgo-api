@@ -6,9 +6,9 @@ const genererToken = (id) =>
 
 const register = async (req, res, next) => {
   try {
-    const { nom, email, mot_de_passe, est_conducteur, type_vehicule, otp, code_parrainage } = req.body;
+    const { nom, telephone, email, mot_de_passe, est_conducteur, type_vehicule, otp, code_parrainage } = req.body;
 
-    if (!nom || !email || !mot_de_passe) {
+    if (!nom || !telephone || !email || !mot_de_passe) {
       return res.status(400).json({ success: false, message: 'Remplis tous les champs obligatoires.' });
     }
     if (mot_de_passe.length < 6) {
@@ -23,8 +23,10 @@ const register = async (req, res, next) => {
       return res.status(400).json({ success: false, message: otpErr.message });
     }
 
-    const existant = await User.findOne({ where: { email: email.toLowerCase() } });
-    if (existant) {
+    if (await User.findOne({ where: { telephone } })) {
+      return res.status(409).json({ success: false, message: 'Ce numéro de téléphone est déjà utilisé.' });
+    }
+    if (await User.findOne({ where: { email: email.toLowerCase() } })) {
       return res.status(409).json({ success: false, message: 'Cet email est déjà utilisé.' });
     }
 
@@ -35,11 +37,10 @@ const register = async (req, res, next) => {
 
     const estConducteur = est_conducteur || false;
     const user = await User.create({
-      nom,
-      email: email.toLowerCase(),
-      mot_de_passe,
+      nom, telephone, email: email.toLowerCase(), mot_de_passe,
       est_conducteur: estConducteur,
       type_vehicule: estConducteur && type_vehicule ? type_vehicule : null,
+      numero_paiement: telephone,
       parraine_par: parrain?.id || null,
     });
 
@@ -54,12 +55,12 @@ const register = async (req, res, next) => {
       success: true,
       token,
       data: {
-        id: user.id, nom: user.nom, email: user.email,
+        id: user.id, nom: user.nom, telephone: user.telephone, email: user.email,
         est_conducteur: user.est_conducteur,
         type_vehicule: user.type_vehicule || null,
         documents_soumis: false, is_verifie: false, solde: 0,
         marque_vehicule: null, modele_vehicule: null,
-        numero_paiement: user.numero_paiement || null,
+        numero_paiement: telephone,
       },
     });
   } catch (err) {
@@ -69,15 +70,15 @@ const register = async (req, res, next) => {
 
 const login = async (req, res, next) => {
   try {
-    const { email, mot_de_passe } = req.body;
+    const { telephone, mot_de_passe } = req.body;
 
-    if (!email || !mot_de_passe) {
-      return res.status(400).json({ success: false, message: 'Email et mot de passe requis.' });
+    if (!telephone || !mot_de_passe) {
+      return res.status(400).json({ success: false, message: 'Téléphone et mot de passe requis.' });
     }
 
-    const user = await User.scope('withPassword').findOne({ where: { email: email.toLowerCase() } });
+    const user = await User.scope('withPassword').findOne({ where: { telephone } });
     if (!user || !(await user.verifierMotDePasse(mot_de_passe))) {
-      return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect.' });
+      return res.status(401).json({ success: false, message: 'Numéro ou mot de passe incorrect.' });
     }
 
     const token = genererToken(user.id);
@@ -85,7 +86,7 @@ const login = async (req, res, next) => {
       success: true,
       token,
       data: {
-        id: user.id, nom: user.nom, email: user.email, telephone: user.telephone,
+        id: user.id, nom: user.nom, telephone: user.telephone, email: user.email,
         est_conducteur: user.est_conducteur, est_admin: user.est_admin,
         documents_soumis: user.documents_soumis, is_verifie: user.is_verifie,
         solde: parseFloat(user.solde || 0),
@@ -152,21 +153,23 @@ const envoyerEmailOTP = async (email, code) => {
   }
 };
 
-const envoyerOTP = async (email) => {
+// identifier = clé du store (email pour l'inscription, telephone pour le reset)
+// emailDest  = adresse email qui reçoit le code
+const envoyerOTP = async (identifier, emailDest) => {
   const code = String(Math.floor(100000 + Math.random() * 900000));
-  otpStore.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
-  await envoyerEmailOTP(email, code);
+  otpStore.set(identifier, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
+  await envoyerEmailOTP(emailDest, code);
 };
 
-const verifierOTP = async (email, code) => {
-  const stored = otpStore.get(email);
+const verifierOTP = async (identifier, code) => {
+  const stored = otpStore.get(identifier);
   if (!stored) throw Object.assign(new Error('Code requis. Demande un nouveau code.'), { status: 400 });
   if (Date.now() > stored.expiresAt) {
-    otpStore.delete(email);
+    otpStore.delete(identifier);
     throw Object.assign(new Error('Le code a expiré. Demande un nouveau code.'), { status: 400 });
   }
   if (stored.code !== String(code)) throw Object.assign(new Error('Code incorrect.'), { status: 400 });
-  otpStore.delete(email);
+  otpStore.delete(identifier);
 };
 
 const demanderOTPInscription = async (req, res, next) => {
@@ -179,7 +182,8 @@ const demanderOTPInscription = async (req, res, next) => {
     if (existant) {
       return res.status(409).json({ success: false, message: 'Cet email est déjà associé à un compte.' });
     }
-    await envoyerOTP(email.toLowerCase());
+    // identifiant = email (clé du store), destination = email
+    await envoyerOTP(email.toLowerCase(), email.toLowerCase());
     return res.json({ success: true, message: 'Code de vérification envoyé par email.' });
   } catch (err) {
     next(err);
@@ -188,16 +192,20 @@ const demanderOTPInscription = async (req, res, next) => {
 
 const demanderOTP = async (req, res, next) => {
   try {
-    const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ success: false, message: 'Email requis.' });
+    const { telephone } = req.body;
+    if (!telephone) {
+      return res.status(400).json({ success: false, message: 'Numéro de téléphone requis.' });
     }
-    const user = await User.findOne({ where: { email: email.toLowerCase() } });
+    const user = await User.findOne({ where: { telephone } });
     if (!user) {
-      return res.status(404).json({ success: false, message: 'Aucun compte avec cet email.' });
+      return res.status(404).json({ success: false, message: 'Aucun compte avec ce numéro.' });
     }
-    await envoyerOTP(email.toLowerCase());
-    return res.json({ success: true, message: 'Code envoyé par email.' });
+    if (!user.email) {
+      return res.status(400).json({ success: false, message: 'Aucun email associé à ce compte. Contacte le support.' });
+    }
+    // identifiant = telephone (clé du store), destination = email de l'utilisateur
+    await envoyerOTP(telephone, user.email);
+    return res.json({ success: true, message: 'Code envoyé à ton adresse email.' });
   } catch (err) {
     next(err);
   }
@@ -205,21 +213,21 @@ const demanderOTP = async (req, res, next) => {
 
 const resetPassword = async (req, res, next) => {
   try {
-    const { email, otp, nouveau_mot_de_passe } = req.body;
-    if (!email || !otp || !nouveau_mot_de_passe) {
+    const { telephone, otp, nouveau_mot_de_passe } = req.body;
+    if (!telephone || !otp || !nouveau_mot_de_passe) {
       return res.status(400).json({ success: false, message: 'Remplis tous les champs.' });
     }
     if (nouveau_mot_de_passe.length < 6) {
       return res.status(400).json({ success: false, message: 'Le mot de passe doit contenir au moins 6 caractères.' });
     }
     try {
-      await verifierOTP(email.toLowerCase(), otp);
+      await verifierOTP(telephone, otp);
     } catch (otpErr) {
       return res.status(400).json({ success: false, message: otpErr.message });
     }
-    const user = await User.scope('withPassword').findOne({ where: { email: email.toLowerCase() } });
+    const user = await User.scope('withPassword').findOne({ where: { telephone } });
     if (!user) {
-      return res.status(404).json({ success: false, message: 'Aucun compte avec cet email.' });
+      return res.status(404).json({ success: false, message: 'Aucun compte avec ce numéro.' });
     }
     user.mot_de_passe = nouveau_mot_de_passe;
     await user.save();

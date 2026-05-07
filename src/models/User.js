@@ -12,17 +12,17 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING(100),
     allowNull: false,
   },
+  telephone: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    unique: true,
+    validate: { is: /^\+?[0-9]{8,15}$/ },
+  },
   email: {
     type: DataTypes.STRING(200),
     allowNull: true,
     unique: true,
     validate: { isEmail: true },
-  },
-  telephone: {
-    type: DataTypes.STRING(20),
-    allowNull: true,
-    unique: true,
-    validate: { is: /^\+?[0-9]{8,15}$/ },
   },
   mot_de_passe: {
     type: DataTypes.STRING,
