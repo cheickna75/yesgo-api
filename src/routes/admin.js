@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { protect, requireAdmin } = require('../middleware/auth');
-const { getStats, getUtilisateurs, toggleActif, supprimerUtilisateur, getReservations, getAdmins, creerAdmin, getConducteurs, verifierConducteur, getDocumentFiles, resetDocuments } = require('../controllers/adminController');
+const { getStats, getUtilisateurs, toggleActif, supprimerUtilisateur, getReservations, getAdmins, creerAdmin, modifierAdmin, suspendreAdmin, verifierAdmin, supprimerAdmin, getConducteurs, verifierConducteur, getDocumentFiles, resetDocuments } = require('../controllers/adminController');
 
 const router = Router();
 
@@ -11,8 +11,12 @@ router.get('/utilisateurs', getUtilisateurs);
 router.patch('/utilisateurs/:id/toggle',    toggleActif);
 router.delete('/utilisateurs/:id',          supprimerUtilisateur);
 router.get('/reservations', getReservations);
-router.get('/admins',       getAdmins);
-router.post('/admins',      creerAdmin);
+router.get('/admins',                    getAdmins);
+router.post('/admins',                   creerAdmin);
+router.patch('/admins/:id',              modifierAdmin);
+router.patch('/admins/:id/suspendre',    suspendreAdmin);
+router.patch('/admins/:id/verifier',     verifierAdmin);
+router.delete('/admins/:id',             supprimerAdmin);
 router.get('/conducteurs',           getConducteurs);
 router.patch('/conducteurs/:id/verifier', verifierConducteur);
 router.get('/documents-files', getDocumentFiles);

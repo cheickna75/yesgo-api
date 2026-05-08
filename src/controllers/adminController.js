@@ -169,10 +169,61 @@ const getAdmins = async (req, res, next) => {
   try {
     const admins = await User.findAll({
       where: { est_admin: true },
-      attributes: ['id', 'nom', 'telephone', 'actif', 'createdAt'],
+      attributes: ['id', 'nom', 'telephone', 'email', 'actif', 'is_verifie', 'createdAt'],
       order: [['createdAt', 'ASC']],
     });
     return res.json({ success: true, data: admins });
+  } catch (err) { next(err); }
+};
+
+// Modifier un admin (nom, téléphone, mot de passe)
+const modifierAdmin = async (req, res, next) => {
+  try {
+    const admin = await User.findOne({ where: { id: req.params.id, est_admin: true } });
+    if (!admin) return res.status(404).json({ success: false, message: 'Admin introuvable.' });
+    const { nom, telephone, mot_de_passe } = req.body;
+    const updates = {};
+    if (nom?.trim())       updates.nom       = nom.trim();
+    if (telephone?.trim()) updates.telephone = telephone.trim();
+    if (mot_de_passe && mot_de_passe.length >= 6) updates.mot_de_passe = mot_de_passe;
+    await admin.update(updates);
+    return res.json({ success: true, message: `${admin.nom} mis à jour.` });
+  } catch (err) { next(err); }
+};
+
+// Suspendre / réactiver un admin
+const suspendreAdmin = async (req, res, next) => {
+  try {
+    const admin = await User.findOne({ where: { id: req.params.id, est_admin: true } });
+    if (!admin) return res.status(404).json({ success: false, message: 'Admin introuvable.' });
+    if (admin.id === req.user.id)
+      return res.status(400).json({ success: false, message: 'Vous ne pouvez pas vous suspendre vous-même.' });
+    const nouvelEtat = !admin.actif;
+    await admin.update({ actif: nouvelEtat });
+    return res.json({ success: true, message: nouvelEtat ? `${admin.nom} réactivé.` : `${admin.nom} suspendu.`, actif: nouvelEtat });
+  } catch (err) { next(err); }
+};
+
+// Vérifier / dévérifier un admin
+const verifierAdmin = async (req, res, next) => {
+  try {
+    const admin = await User.findOne({ where: { id: req.params.id, est_admin: true } });
+    if (!admin) return res.status(404).json({ success: false, message: 'Admin introuvable.' });
+    const nouvelEtat = !admin.is_verifie;
+    await admin.update({ is_verifie: nouvelEtat });
+    return res.json({ success: true, message: nouvelEtat ? `${admin.nom} vérifié ✅` : `Vérification retirée.`, is_verifie: nouvelEtat });
+  } catch (err) { next(err); }
+};
+
+// Retirer le rôle admin (suppression du statut admin)
+const supprimerAdmin = async (req, res, next) => {
+  try {
+    const admin = await User.findOne({ where: { id: req.params.id, est_admin: true } });
+    if (!admin) return res.status(404).json({ success: false, message: 'Admin introuvable.' });
+    if (admin.id === req.user.id)
+      return res.status(400).json({ success: false, message: 'Vous ne pouvez pas supprimer votre propre compte admin.' });
+    await admin.update({ est_admin: false });
+    return res.json({ success: true, message: `${admin.nom} n'est plus administrateur.` });
   } catch (err) { next(err); }
 };
 
@@ -269,4 +320,4 @@ const resetDocuments = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getStats, getUtilisateurs, toggleActif, supprimerUtilisateur, getReservations, getAdmins, creerAdmin, getConducteurs, verifierConducteur, getDocumentFiles, resetDocuments };
+module.exports = { getStats, getUtilisateurs, toggleActif, supprimerUtilisateur, getReservations, getAdmins, creerAdmin, modifierAdmin, suspendreAdmin, verifierAdmin, supprimerAdmin, getConducteurs, verifierConducteur, getDocumentFiles, resetDocuments };

@@ -393,11 +393,13 @@
                 <th>Nom</th>
                 <th>Téléphone</th>
                 <th>Statut</th>
+                <th>Vérifié</th>
                 <th>Créé le</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="adminsTableBody">
-              <tr><td colspan="4" class="text-center py-4 text-muted">Chargement…</td></tr>
+              <tr><td colspan="6" class="text-center py-4 text-muted">Chargement…</td></tr>
             </tbody>
           </table>
         </div>
@@ -469,6 +471,49 @@
   </div>
 </div>
 
+<!-- ══════════ MODAL : Modifier un admin ══════════ -->
+<div class="modal fade" id="modalModifAdmin" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-700">
+          <i class="bi bi-pencil-square me-2" style="color:var(--orange)"></i>Modifier l'administrateur
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-2">
+        <input type="hidden" id="modifAdminId" />
+        <div id="modifAdminError" class="alert alert-danger d-none py-2 small"></div>
+
+        <div class="mb-3">
+          <label class="form-label fw-600">Nom complet</label>
+          <input id="modifAdminNom" type="text" class="form-control" placeholder="Nom complet" />
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-600">Téléphone</label>
+          <input id="modifAdminTel" type="tel" class="form-control" placeholder="+22300000000" />
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-600">Nouveau mot de passe <span class="text-muted fw-400">(laisser vide pour ne pas changer)</span></label>
+          <div class="input-group">
+            <input id="modifAdminPwd" type="password" class="form-control border-end-0" placeholder="6 caractères minimum" />
+            <button type="button" class="btn btn-outline-secondary border-start-0" onclick="toggleVis('modifAdminPwd','modifAdminPwdIcon')" tabindex="-1">
+              <i class="bi bi-eye" id="modifAdminPwdIcon"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-light" data-bs-dismiss="modal">Annuler</button>
+        <button id="modifAdminSubmit" class="btn btn-orange px-4">
+          <span id="modifAdminSpinner" class="spinner-border spinner-border-sm me-2 d-none"></span>
+          Enregistrer
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
   // ── Configuration ────────────────────────────────────────────────────────────
@@ -491,6 +536,26 @@
     const icon  = document.getElementById(iconId);
     if (input.type === 'password') { input.type = 'text';     icon.className = 'bi bi-eye-slash'; }
     else                           { input.type = 'password'; icon.className = 'bi bi-eye'; }
+  }
+
+  function showToast(message, isError = false) {
+    const id = 'toast-' + Date.now();
+    const bg = isError ? 'bg-danger' : 'bg-success';
+    const html = `<div id="${id}" class="toast align-items-center text-white ${bg} border-0 mb-2" role="alert">
+      <div class="d-flex"><div class="toast-body">${message}</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`;
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toastContainer';
+      container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+      container.style.zIndex = 9999;
+      document.body.appendChild(container);
+    }
+    container.insertAdjacentHTML('beforeend', html);
+    const el = document.getElementById(id);
+    new bootstrap.Toast(el, { delay: 4000 }).show();
+    el.addEventListener('hidden.bs.toast', () => el.remove());
   }
 
   const STATUT_BADGE = { en_attente: 'warning', accepte: 'success', refuse: 'danger', annule: 'secondary' };
@@ -695,7 +760,21 @@
             : '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Désactivé</span>'}
         </td>
         <td>
-          ${u.est_admin ? '<span class="text-muted small">—</span>' : `
+          ${u.est_admin ? `
+            <div class="d-flex gap-1 flex-wrap">
+              <button class="btn btn-sm btn-outline-primary py-0 px-2" title="Modifier"
+                onclick="ouvrirModifAdmin('${u.id}','${u.nom.replace(/'/g, "\\'")}','${u.telephone}')">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button class="btn btn-sm ${u.actif ? 'btn-outline-warning' : 'btn-outline-success'} py-0 px-2" title="${u.actif ? 'Suspendre' : 'Réactiver'}"
+                onclick="toggleSuspendreAdmin('${u.id}','${u.nom.replace(/'/g, "\\'")}',${u.actif})">
+                <i class="bi bi-${u.actif ? 'pause-circle' : 'play-circle'}"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-danger py-0 px-2" title="Retirer le rôle admin"
+                onclick="supprimerAdminConfirm('${u.id}','${u.nom.replace(/'/g, "\\'")}')">
+                <i class="bi bi-shield-x"></i>
+              </button>
+            </div>` : `
             <div class="d-flex gap-1 flex-wrap">
               <button class="btn btn-sm ${u.actif ? 'btn-outline-danger' : 'btn-outline-success'} py-0 px-2"
                 onclick="toggleUser('${u.id}', ${u.actif})">
@@ -1095,15 +1174,18 @@
   // ── Administrateurs ──────────────────────────────────────────────────────────
   async function loadAdmins() {
     const tbody = document.getElementById('adminsTableBody');
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-muted">Chargement…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">Chargement…</td></tr>';
     try {
       const { data } = await apiFetch('/admin/admins');
       if (!data.length) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-muted">Aucun administrateur.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">Aucun administrateur.</td></tr>';
         return;
       }
-      tbody.innerHTML = data.map(a => `
-        <tr class="admin-row">
+      tbody.innerHTML = data.map(a => {
+        const nomSafe = a.nom.replace(/'/g, "\\'");
+        const telSafe = (a.telephone || '').replace(/'/g, "\\'");
+        return `
+        <tr id="admin-row-${a.id}">
           <td>
             <div class="d-flex align-items-center gap-2">
               <div style="width:34px;height:34px;border-radius:50%;background:var(--orange);color:#fff;
@@ -1116,18 +1198,98 @@
               </div>
             </div>
           </td>
-          <td class="text-muted align-middle">${a.telephone}</td>
+          <td class="text-muted align-middle">${a.telephone || '—'}</td>
           <td class="align-middle">
             ${a.actif
               ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Actif</span>'
-              : '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Désactivé</span>'}
+              : '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Suspendu</span>'}
+          </td>
+          <td class="align-middle">
+            ${a.is_verifie
+              ? '<span class="badge bg-success"><i class="bi bi-patch-check-fill me-1"></i>Vérifié</span>'
+              : '<span class="badge bg-secondary-subtle text-muted">Non vérifié</span>'}
           </td>
           <td class="text-muted small align-middle">${fmtDate(a.createdAt)}</td>
-        </tr>`).join('');
+          <td class="align-middle">
+            <div class="d-flex gap-1 flex-wrap">
+              <button class="btn btn-sm btn-outline-primary py-0 px-2" title="Modifier"
+                onclick="ouvrirModifAdmin('${a.id}','${nomSafe}','${telSafe}')">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button class="btn btn-sm ${a.is_verifie ? 'btn-outline-warning' : 'btn-outline-success'} py-0 px-2" title="${a.is_verifie ? 'Retirer vérification' : 'Vérifier'}"
+                onclick="toggleVerifAdmin('${a.id}')">
+                <i class="bi bi-${a.is_verifie ? 'patch-minus' : 'patch-check'}"></i>
+              </button>
+              <button class="btn btn-sm ${a.actif ? 'btn-outline-warning' : 'btn-outline-success'} py-0 px-2" title="${a.actif ? 'Suspendre' : 'Réactiver'}"
+                onclick="toggleSuspendreAdmin('${a.id}','${nomSafe}',${a.actif})">
+                <i class="bi bi-${a.actif ? 'pause-circle' : 'play-circle'}"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-danger py-0 px-2" title="Retirer le rôle admin"
+                onclick="supprimerAdminConfirm('${a.id}','${nomSafe}')">
+                <i class="bi bi-shield-x"></i>
+              </button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
     } catch (e) {
-      tbody.innerHTML = `<tr><td colspan="4" class="text-danger text-center py-3">${e.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-3">${e.message}</td></tr>`;
     }
   }
+
+  // ── Actions sur les admins ────────────────────────────────────────────────────
+  async function toggleVerifAdmin(id) {
+    try {
+      const { message } = await apiFetch(`/admin/admins/${id}/verifier`, { method: 'PATCH' });
+      showToast(message); loadAdmins();
+    } catch (e) { showToast(e.message, true); }
+  }
+
+  async function toggleSuspendreAdmin(id, nom, actifActuel) {
+    const action = actifActuel ? 'suspendre' : 'réactiver';
+    if (!confirm(`Voulez-vous ${action} l'admin ${nom} ?`)) return;
+    try {
+      const { message } = await apiFetch(`/admin/admins/${id}/suspendre`, { method: 'PATCH' });
+      showToast(message); loadAdmins();
+    } catch (e) { showToast(e.message, true); }
+  }
+
+  async function supprimerAdminConfirm(id, nom) {
+    if (!confirm(`Retirer le rôle admin à ${nom} ? Le compte utilisateur sera conservé.`)) return;
+    try {
+      const { message } = await apiFetch(`/admin/admins/${id}`, { method: 'DELETE' });
+      showToast(message); loadAdmins();
+    } catch (e) { showToast(e.message, true); }
+  }
+
+  function ouvrirModifAdmin(id, nom, telephone) {
+    document.getElementById('modifAdminId').value        = id;
+    document.getElementById('modifAdminNom').value       = nom;
+    document.getElementById('modifAdminTel').value       = telephone;
+    document.getElementById('modifAdminPwd').value       = '';
+    document.getElementById('modifAdminError').classList.add('d-none');
+    new bootstrap.Modal(document.getElementById('modalModifAdmin')).show();
+  }
+
+  document.getElementById('modifAdminSubmit').addEventListener('click', async () => {
+    const id  = document.getElementById('modifAdminId').value;
+    const nom = document.getElementById('modifAdminNom').value.trim();
+    const tel = document.getElementById('modifAdminTel').value.trim();
+    const pwd = document.getElementById('modifAdminPwd').value;
+    const errEl = document.getElementById('modifAdminError');
+    errEl.classList.add('d-none');
+    if (!nom && !tel && !pwd) {
+      errEl.textContent = 'Modifie au moins un champ.'; errEl.classList.remove('d-none'); return;
+    }
+    try {
+      const { message } = await apiFetch(`/admin/admins/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ nom: nom || undefined, telephone: tel || undefined, mot_de_passe: pwd || undefined }),
+      });
+      bootstrap.Modal.getInstance(document.getElementById('modalModifAdmin')).hide();
+      showToast(message); loadAdmins();
+    } catch (e) { errEl.textContent = e.message; errEl.classList.remove('d-none'); }
+  });
 
   // ── Modal : Créer / Promouvoir un admin ──────────────────────────────────────
   document.getElementById('modalAdmin').addEventListener('show.bs.modal', () => {
